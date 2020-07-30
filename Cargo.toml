@@ -3,6 +3,8 @@ name = "xgifwall"
 version = "0.1.0"
 authors = ["Frank Großgasteiger <frank@pixelgerecht.de>"]
 edition = "2018"
+links = "X11"
+build = "build.rs"
 
 [dependencies]
 gif = "0.10.3"
