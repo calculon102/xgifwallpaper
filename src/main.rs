@@ -1,10 +1,16 @@
 extern crate x11;
 
+use image::gif::{GifDecoder};
+use image::{AnimationDecoder, Frame};
+
+use std::ptr;
+
+
 use std::ffi:: {
     CString,
     c_void
 };
-use std::ptr;
+use std::fs::File;
 use x11::xlib;
 
 // TODO Show XBM as background
@@ -20,95 +26,139 @@ use x11::xlib;
 // TODO cmd-opts
 // TODO Verbose mode
 
-fn main () {
-    unsafe {
-        // Open display connection.
-        let display = xlib::XOpenDisplay(ptr::null());
+fn load_gif(filename: String) -> Vec<Frame>
+{
+    let file_in = File::open(filename)
+        .expect("Could not load gif");
 
-        if display.is_null() {
-            panic!("XOpenDisplay failed");
-        }
+    let decoder = GifDecoder::new(file_in)
+        .expect("Error initializing gif-decoder");
 
-        println!("ScreenCount: {}", xlib::XScreenCount(display));
+    let frames = decoder.into_frames();
 
-        let screen = xlib::XDefaultScreen(display);
-        let width = xlib::XDisplayWidth(display, screen) as u32;
-        let height = xlib::XDisplayHeight(display, screen) as u32;
-        let root = xlib::XRootWindow(display, screen);
-        let cmap = xlib::XDefaultColormap(display, screen);
-        let depth = xlib::XDefaultDepth(display, screen) as u32;
+    return frames.collect_frames()
+        .expect("error decoding gif");
+}
 
-        let mut color = xlib::XColor {
-            pixel: 0,
-            red: 32000,
-            green: 64000,
-            blue: 32000,
-            flags: xlib::DoRed | xlib::DoGreen | xlib::DoBlue,
-            pad: 0
-        };
+fn main() {
+    // TODO Read Args
+    let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels4.gif");
+    
+    // TODO Analyze screen-count and resolutions
+   
+    // TODO Load GIF
+    let frames = load_gif(gif_filename);
 
-        let color_ptr: *mut xlib::XColor = &mut color;
+    let mut count = 0;
 
-        println!("display: {:?}", display);
-
-        xlib::XAllocColor(display, cmap, color_ptr);
-
-        println!("display: {:?}", display);
-        
-        let pixmap = xlib::XCreatePixmap(display, root, width, height, depth);
-
-        println!("display: {:?}", display);
-
-        let mut gcvalues = xlib::XGCValues {
-            function: xlib::GXcopy,
-            plane_mask: xlib::XAllPlanes(),
-            foreground: color.pixel,
-            background: color.pixel,
-            line_width: 0,
-            line_style: 0,
-            cap_style: 0,
-            join_style: 0,
-            fill_style: 0,
-            fill_rule: 0,
-            arc_mode: 0,
-            tile: 0,
-            stipple: 0,
-            ts_x_origin: 0,
-            ts_y_origin: 0,
-            font: 0,
-            subwindow_mode: xlib::ClipByChildren,
-            graphics_exposures: xlib::True,
-            clip_x_origin: 0,
-            clip_y_origin: 0,
-            clip_mask: 0,
-            dash_offset: 0,
-            dashes: 0,
-        };
-        
-        let gc_ptr: *mut xlib::XGCValues = &mut gcvalues;
-        let gc_flags = (xlib::GCForeground | xlib::GCBackground) as u64;
-        let gc = xlib::XCreateGC(display, root, gc_flags, gc_ptr);
-
-        xlib::XFillRectangle(display, pixmap, gc, 0, 0, width, height);
-        xlib::XFreeGC(display, gc);
-        
-        println!("display: {:?}", display);
-        println!("screen: {}", screen);
-        println!("depth: {}", depth);
-        println!("width: {}", width);
-        println!("height: {}", height);
-        println!("color.pixel: {}", color.pixel);
-
-        if !set_root_atoms(display, root, pixmap) {
-            println!("set_root_atoms failed!");
-        }
-
-        xlib::XSetWindowBackgroundPixmap(display, root, pixmap);
-        xlib::XClearWindow(display, root);
-        xlib::XFlush(display);
-        xlib::XSetCloseDownMode(display, xlib::RetainPermanent);
-        xlib::XCloseDisplay(display);
+    for frame in frames.iter() {
+        count = count + 1;
+        println!("Frame {}", count);
+        println!("delay: {:?}", frame.delay());
+        println!("dimensions: {:?}", frame.buffer().dimensions());
+        println!("left: {:?}", frame.left());
+        println!("top: {:?}", frame.top());
     }
+
+    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
+    
+    // TODO Render frames as background
+    
+    // TODO Animation-Loop
+
+    unsafe {
+//        demo();
+    }
+}
+
+unsafe fn demo() 
+{
+    // Open display connection.
+    let display = xlib::XOpenDisplay(ptr::null());
+
+    if display.is_null() {
+        panic!("XOpenDisplay failed");
+    }
+
+    println!("ScreenCount: {}", xlib::XScreenCount(display));
+
+    let screen = xlib::XDefaultScreen(display);
+    let width = xlib::XDisplayWidth(display, screen) as u32;
+    let height = xlib::XDisplayHeight(display, screen) as u32;
+    let root = xlib::XRootWindow(display, screen);
+    let cmap = xlib::XDefaultColormap(display, screen);
+    let depth = xlib::XDefaultDepth(display, screen) as u32;
+
+    let mut color = xlib::XColor {
+        pixel: 0,
+        red: 32000,
+        green: 64000,
+        blue: 32000,
+        flags: xlib::DoRed | xlib::DoGreen | xlib::DoBlue,
+        pad: 0
+    };
+
+    let color_ptr: *mut xlib::XColor = &mut color;
+
+    println!("display: {:?}", display);
+
+    xlib::XAllocColor(display, cmap, color_ptr);
+
+    println!("display: {:?}", display);
+    
+    let pixmap = xlib::XCreatePixmap(display, root, width, height, depth);
+
+    println!("display: {:?}", display);
+
+    let mut gcvalues = xlib::XGCValues {
+        function: xlib::GXcopy,
+        plane_mask: xlib::XAllPlanes(),
+        foreground: color.pixel,
+        background: color.pixel,
+        line_width: 0,
+        line_style: 0,
+        cap_style: 0,
+        join_style: 0,
+        fill_style: 0,
+        fill_rule: 0,
+        arc_mode: 0,
+        tile: 0,
+        stipple: 0,
+        ts_x_origin: 0,
+        ts_y_origin: 0,
+        font: 0,
+        subwindow_mode: xlib::ClipByChildren,
+        graphics_exposures: xlib::True,
+        clip_x_origin: 0,
+        clip_y_origin: 0,
+        clip_mask: 0,
+        dash_offset: 0,
+        dashes: 0,
+    };
+    
+    let gc_ptr: *mut xlib::XGCValues = &mut gcvalues;
+    let gc_flags = (xlib::GCForeground | xlib::GCBackground) as u64;
+    let gc = xlib::XCreateGC(display, root, gc_flags, gc_ptr);
+
+    xlib::XFillRectangle(display, pixmap, gc, 0, 0, width, height);
+    xlib::XFreeGC(display, gc);
+    
+    println!("display: {:?}", display);
+    println!("screen: {}", screen);
+    println!("depth: {}", depth);
+    println!("width: {}", width);
+    println!("height: {}", height);
+    println!("color.pixel: {}", color.pixel);
+
+    if !set_root_atoms(display, root, pixmap) {
+        println!("set_root_atoms failed!");
+    }
+
+    xlib::XSetWindowBackgroundPixmap(display, root, pixmap);
+    xlib::XClearWindow(display, root);
+    xlib::XFlush(display);
+    xlib::XSetCloseDownMode(display, xlib::RetainPermanent);
+    xlib::XCloseDisplay(display);
 }
 
 unsafe fn set_root_atoms(display: *mut xlib::Display, root: u64, pixmap: xlib::Pixmap) -> bool {
