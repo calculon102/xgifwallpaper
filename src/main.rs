@@ -1,118 +1,222 @@
 extern crate x11;
 
-use image::gif::{GifDecoder};
-use image::{AnimationDecoder, Frame};
+use gift::Decoder;
+use gift::decode::Steps;
 
 use std::ptr;
-
 
 use std::ffi:: {
     CString,
     c_void
 };
-use std::fs::File;
-use x11::xlib;
 
-// TODO Show XBM as background
-// TODO Load GIF
-// TODO Convert GIF-Frames to XBM
-// TODO Set XBM as Background in tempo of GIF
-// TODO Center
-// TODO Scale
-// TODO Fill?
+use std::fs::File;
+
+use std::io::BufReader;
+
+use std::os::raw:: {
+    c_char
+};
+
+use x11::xlib::*;
+
+
+// TODO Center-Feature
+// TODO Scale-Feature
+// TODO Fill-Feature
 // TODO On all Screens
 // TODO Multiple images on different screens
 // TODO Minimize unsafe
 // TODO cmd-opts
 // TODO Verbose mode
+// TODO Tiling?
 
-fn load_gif(filename: String) -> Vec<Frame>
+fn load_gif(filename: String) -> Steps<BufReader<File>>
 {
     let file_in = File::open(filename)
         .expect("Could not load gif");
 
-    let decoder = GifDecoder::new(file_in)
-        .expect("Error initializing gif-decoder");
+    let decoder = Decoder::new(file_in);
 
-    let frames = decoder.into_frames();
+    return decoder.into_steps();
+}
 
-    return frames.collect_frames()
-        .expect("error decoding gif");
+fn loop_animation(steps: Steps<BufReader<File>>)
+{
+    unsafe {
+        let xdisplay = XOpenDisplay(ptr::null());
+
+        let (images, _rasters) = convert_frames_to_ximages(xdisplay, steps);
+
+        // TODO Loop Frames with delay
+        for ximage_ptr  in images.iter() {
+            println!("ximage_ptr: {:?}", ximage_ptr);
+            set_image_as_background(xdisplay, *ximage_ptr);
+        }
+        
+        // TODO React on signal in loop
+
+        // TODO Update background in loop via pixmap
+
+        XCloseDisplay(xdisplay);
+    }
+}
+
+fn convert_frames_to_ximages(
+    xdisplay: *mut Display, mut frames: Steps<BufReader<File>>) 
+    -> (Vec<XImage>, Vec<Vec<c_char>>)
+{
+    let mut frame_count = 0;
+
+    // TODO Loop over frames
+    let frame = frames.nth(0)
+        .unwrap()
+        .expect("Empty frame in animation");
+    
+    let raster = frame.raster();
+    
+    frame_count = frame_count + 1;
+    println!("Frame {}", frame_count);
+    println!("delay: {}", frame.delay_time_cs().unwrap_or(666));
+    println!("width: {:?}", raster.width());
+    println!("height: {:?}", raster.height());
+
+    let mut image_structs: Vec<XImage> = Vec::new();
+    let mut image_rasters: Vec<Vec<c_char>> = Vec::new();
+
+    unsafe {
+        let xscreen = XDefaultScreenOfDisplay(xdisplay);
+        let xvisual = XDefaultVisualOfScreen(xscreen);
+
+        let ximage = XCreateImage(
+            xdisplay,
+            xvisual,
+            24,
+            ZPixmap,
+            0,
+            ptr::null_mut(), 
+            raster.width(),
+            raster.height(),
+            32,
+            0 
+        );
+
+        let data_size = ((*ximage).bytes_per_line * (*ximage).height) as usize;
+        let mut data: Vec<c_char> = Vec::with_capacity(data_size);
+
+        for pixel_channel in raster.as_u8_slice() {
+            data.push(*pixel_channel as i8);
+        }
+
+        println!("data.len: {} == data_size: {}", data.len(), data_size);
+
+        let data_ptr = data.as_mut_ptr();
+        (*ximage).data = data_ptr;       
+   
+        image_structs.push(*ximage);
+        image_rasters.push(data);
+    }
+
+    return (image_structs, image_rasters);
+}
+
+fn set_image_as_background(display: *mut Display, ximage: XImage) -> XImage {
+    unsafe {
+        let screen = XDefaultScreen(display);
+        let gc = XDefaultGC(display, 0);
+        let width = XDisplayWidth(display, screen) as u32;
+        let height = XDisplayHeight(display, screen) as u32;
+        let root = XRootWindow(display, screen);
+        let depth = XDefaultDepth(display, screen) as u32;
+
+        XSetCloseDownMode(display, RetainPermanent);
+
+        println!("{:?} {:?} {:?} {:?} {:?}", display, root, width, height, depth);
+        println!("ximage: {:?}", *(ximage.data));
+
+        let pixmap = XCreatePixmap(display, root, width, height, depth);
+        XSync(display, False);
+
+        let mut image = ximage;
+
+        XPutImage(
+            display,
+            pixmap,
+            gc,
+            &mut image,
+            0, 0, 0, 0,
+            ximage.width as u32, ximage.height as u32
+        );
+
+        XFlush(display);
+
+        if !set_root_atoms(display, root, pixmap) {
+            println!("set_root_atoms failed!");
+        }
+
+        XSetWindowBackgroundPixmap(display, root, pixmap);
+        XClearWindow(display, root);
+        XFlush(display);
+        
+        return image;
+    }
 }
 
 fn main() {
     // TODO Read Args
-    let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels4.gif");
+    let gif_filename = String::from("/home/frank/Pictures/sample.gif");
     
     // TODO Analyze screen-count and resolutions
    
-    // TODO Load GIF
-    let frames = load_gif(gif_filename);
-
-    let mut count = 0;
-
-    for frame in frames.iter() {
-        count = count + 1;
-        println!("Frame {}", count);
-        println!("delay: {:?}", frame.delay());
-        println!("dimensions: {:?}", frame.buffer().dimensions());
-        println!("left: {:?}", frame.left());
-        println!("top: {:?}", frame.top());
-    }
+    // Load GIF
+    let steps = load_gif(gif_filename);
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    
-    // TODO Render frames as background
-    
-    // TODO Animation-Loop
-
-    unsafe {
-//        demo();
-    }
+    loop_animation(steps);
 }
 
 unsafe fn demo() 
 {
     // Open display connection.
-    let display = xlib::XOpenDisplay(ptr::null());
+    let display = XOpenDisplay(ptr::null());
 
     if display.is_null() {
         panic!("XOpenDisplay failed");
     }
 
-    println!("ScreenCount: {}", xlib::XScreenCount(display));
+    println!("ScreenCount: {}", XScreenCount(display));
 
-    let screen = xlib::XDefaultScreen(display);
-    let width = xlib::XDisplayWidth(display, screen) as u32;
-    let height = xlib::XDisplayHeight(display, screen) as u32;
-    let root = xlib::XRootWindow(display, screen);
-    let cmap = xlib::XDefaultColormap(display, screen);
-    let depth = xlib::XDefaultDepth(display, screen) as u32;
+    let screen = XDefaultScreen(display);
+    let width = XDisplayWidth(display, screen) as u32;
+    let height = XDisplayHeight(display, screen) as u32;
+    let root = XRootWindow(display, screen);
+    let cmap = XDefaultColormap(display, screen);
+    let depth = XDefaultDepth(display, screen) as u32;
 
-    let mut color = xlib::XColor {
+    let mut color = XColor {
         pixel: 0,
         red: 32000,
         green: 64000,
         blue: 32000,
-        flags: xlib::DoRed | xlib::DoGreen | xlib::DoBlue,
+        flags: DoRed | DoGreen | DoBlue,
         pad: 0
     };
 
-    let color_ptr: *mut xlib::XColor = &mut color;
+    let color_ptr: *mut XColor = &mut color;
 
     println!("display: {:?}", display);
 
-    xlib::XAllocColor(display, cmap, color_ptr);
+    XAllocColor(display, cmap, color_ptr);
 
     println!("display: {:?}", display);
     
-    let pixmap = xlib::XCreatePixmap(display, root, width, height, depth);
+    let pixmap = XCreatePixmap(display, root, width, height, depth);
 
     println!("display: {:?}", display);
 
-    let mut gcvalues = xlib::XGCValues {
-        function: xlib::GXcopy,
-        plane_mask: xlib::XAllPlanes(),
+    let mut gcvalues = XGCValues {
+        function: GXcopy,
+        plane_mask: XAllPlanes(),
         foreground: color.pixel,
         background: color.pixel,
         line_width: 0,
@@ -127,8 +231,8 @@ unsafe fn demo()
         ts_x_origin: 0,
         ts_y_origin: 0,
         font: 0,
-        subwindow_mode: xlib::ClipByChildren,
-        graphics_exposures: xlib::True,
+        subwindow_mode: ClipByChildren,
+        graphics_exposures: True,
         clip_x_origin: 0,
         clip_y_origin: 0,
         clip_mask: 0,
@@ -136,12 +240,12 @@ unsafe fn demo()
         dashes: 0,
     };
     
-    let gc_ptr: *mut xlib::XGCValues = &mut gcvalues;
-    let gc_flags = (xlib::GCForeground | xlib::GCBackground) as u64;
-    let gc = xlib::XCreateGC(display, root, gc_flags, gc_ptr);
+    let gc_ptr: *mut XGCValues = &mut gcvalues;
+    let gc_flags = (GCForeground | GCBackground) as u64;
+    let gc = XCreateGC(display, root, gc_flags, gc_ptr);
 
-    xlib::XFillRectangle(display, pixmap, gc, 0, 0, width, height);
-    xlib::XFreeGC(display, gc);
+    XFillRectangle(display, pixmap, gc, 0, 0, width, height);
+    XFreeGC(display, gc);
     
     println!("display: {:?}", display);
     println!("screen: {}", screen);
@@ -154,19 +258,19 @@ unsafe fn demo()
         println!("set_root_atoms failed!");
     }
 
-    xlib::XSetWindowBackgroundPixmap(display, root, pixmap);
-    xlib::XClearWindow(display, root);
-    xlib::XFlush(display);
-    xlib::XSetCloseDownMode(display, xlib::RetainPermanent);
-    xlib::XCloseDisplay(display);
+    XSetWindowBackgroundPixmap(display, root, pixmap);
+    XClearWindow(display, root);
+    XFlush(display);
+    XSetCloseDownMode(display, RetainPermanent);
+    XCloseDisplay(display);
 }
 
-unsafe fn set_root_atoms(display: *mut xlib::Display, root: u64, pixmap: xlib::Pixmap) -> bool {
+unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bool {
     let xrootmap_id = CString::new("_XROOTPMAP_ID").expect("Failed!"); 
     let esetroot_pmap_id = CString::new("ESETROOT_PMAP_ID").expect("Failed!"); 
 
-    let mut atom_root = xlib::XInternAtom(display, xrootmap_id.as_ptr(), xlib::True);
-    let mut atom_eroot = xlib::XInternAtom(display, esetroot_pmap_id.as_ptr(), xlib::True);
+    let mut atom_root = XInternAtom(display, xrootmap_id.as_ptr(), True);
+    let mut atom_eroot = XInternAtom(display, esetroot_pmap_id.as_ptr(), True);
 
     // Doing this to clean up after old background.
     //
@@ -185,41 +289,40 @@ unsafe fn set_root_atoms(display: *mut xlib::Display, root: u64, pixmap: xlib::P
         let mut length = 0 as u64;
         let mut after = 0 as u64;
 
-        let result = xlib::XGetWindowProperty(display, root, atom_root, 0, 1, xlib::False, xlib::AnyPropertyType as u64, &mut ptype, &mut format, &mut length, &mut after, &mut data_root_ptr);
+        let result = XGetWindowProperty(display, root, atom_root, 0, 1, False, AnyPropertyType as u64, &mut ptype, &mut format, &mut length, &mut after, &mut data_root_ptr);
 
-        if result == xlib::Success as i32 && ptype == xlib::XA_PIXMAP {
-            xlib::XGetWindowProperty(display, root, atom_eroot, 0, 1, 0, xlib::AnyPropertyType as u64, &mut ptype, &mut format, &mut length, &mut after, &mut data_eroot_ptr);
+        if result == Success as i32 && ptype == XA_PIXMAP {
+            XGetWindowProperty(display, root, atom_eroot, 0, 1, 0, AnyPropertyType as u64, &mut ptype, &mut format, &mut length, &mut after, &mut data_eroot_ptr);
 
-            let root_pixmap_id = *(data_root_ptr as *const xlib::Pixmap);
-            let eroot_pixmap_id = *(data_eroot_ptr as *const xlib::Pixmap);
+            let root_pixmap_id = *(data_root_ptr as *const Pixmap);
+            let eroot_pixmap_id = *(data_eroot_ptr as *const Pixmap);
 
             // Why the data_root-conversion to pixmap for equality-check???
             if // *data_root > 0 
                //  && *data_eroot > 0 
-                 ptype == xlib::XA_PIXMAP 
+                 ptype == XA_PIXMAP 
                 && root_pixmap_id == eroot_pixmap_id {
 
-                xlib::XKillClient(display, root_pixmap_id);
-                xlib::XFree(data_eroot_ptr as *mut c_void);
+                XKillClient(display, root_pixmap_id);
+                XFree(data_eroot_ptr as *mut c_void);
             }
 
-            xlib::XFree(data_root_ptr as *mut c_void);
+            XFree(data_root_ptr as *mut c_void);
         }
     }
 
-    atom_root = xlib::XInternAtom(display, xrootmap_id.as_ptr(), 0);
-    atom_eroot = xlib::XInternAtom(display, esetroot_pmap_id.as_ptr(), 0);
+    atom_root = XInternAtom(display, xrootmap_id.as_ptr(), 0);
+    atom_eroot = XInternAtom(display, esetroot_pmap_id.as_ptr(), 0);
 
     if atom_root == 0 || atom_eroot == 0 {
         return false;
     }
 
     // setting new background atoms
-    let pixmap_ptr: *const xlib::Pixmap = &pixmap;
-    println!("pixmap_ptr: {}", *pixmap_ptr);
+    let pixmap_ptr: *const Pixmap = &pixmap;
     
-    xlib::XChangeProperty(display, root, atom_root, xlib::XA_PIXMAP, 32, xlib::PropModeReplace, pixmap_ptr as *const u8, 1);
-    xlib::XChangeProperty(display, root, atom_eroot, xlib::XA_PIXMAP, 32, xlib::PropModeReplace, pixmap_ptr as *const u8, 1);
+    XChangeProperty(display, root, atom_root, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
+    XChangeProperty(display, root, atom_eroot, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
 
     return true;
 }
