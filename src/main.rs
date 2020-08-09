@@ -18,6 +18,8 @@ use std::os::raw:: {
     c_char
 };
 
+use std::{thread, time};
+
 use x11::xlib::*;
 
 
@@ -44,84 +46,10 @@ fn load_gif(filename: String) -> Steps<BufReader<File>>
 fn loop_animation(steps: Steps<BufReader<File>>)
 {
     unsafe {
-        let xdisplay = XOpenDisplay(ptr::null());
-
-        let (images, _rasters) = convert_frames_to_ximages(xdisplay, steps);
-
-        // TODO Loop Frames with delay
-        for ximage_ptr  in images.iter() {
-            println!("ximage_ptr: {:?}", ximage_ptr);
-            set_image_as_background(xdisplay, *ximage_ptr);
-        }
+        let display = XOpenDisplay(ptr::null());
         
-        // TODO React on signal in loop
-
-        // TODO Update background in loop via pixmap
-
-        XCloseDisplay(xdisplay);
-    }
-}
-
-fn convert_frames_to_ximages(
-    xdisplay: *mut Display, mut frames: Steps<BufReader<File>>) 
-    -> (Vec<XImage>, Vec<Vec<c_char>>)
-{
-    let mut frame_count = 0;
-
-    // TODO Loop over frames
-    let frame = frames.nth(0)
-        .unwrap()
-        .expect("Empty frame in animation");
-    
-    let raster = frame.raster();
-    
-    frame_count = frame_count + 1;
-    println!("Frame {}", frame_count);
-    println!("delay: {}", frame.delay_time_cs().unwrap_or(666));
-    println!("width: {:?}", raster.width());
-    println!("height: {:?}", raster.height());
-
-    let mut image_structs: Vec<XImage> = Vec::new();
-    let mut image_rasters: Vec<Vec<c_char>> = Vec::new();
-
-    unsafe {
-        let xscreen = XDefaultScreenOfDisplay(xdisplay);
-        let xvisual = XDefaultVisualOfScreen(xscreen);
-
-        let ximage = XCreateImage(
-            xdisplay,
-            xvisual,
-            24,
-            ZPixmap,
-            0,
-            ptr::null_mut(), 
-            raster.width(),
-            raster.height(),
-            32,
-            0 
-        );
-
-        let data_size = ((*ximage).bytes_per_line * (*ximage).height) as usize;
-        let mut data: Vec<c_char> = Vec::with_capacity(data_size);
-
-        for pixel_channel in raster.as_u8_slice() {
-            data.push(*pixel_channel as i8);
-        }
-
-        println!("data.len: {} == data_size: {}", data.len(), data_size);
-
-        let data_ptr = data.as_mut_ptr();
-        (*ximage).data = data_ptr;       
-   
-        image_structs.push(*ximage);
-        image_rasters.push(data);
-    }
-
-    return (image_structs, image_rasters);
-}
-
-fn set_image_as_background(display: *mut Display, ximage: XImage) -> XImage {
-    unsafe {
+        let (images, _rasters) = convert_frames_to_ximages(display, steps);
+        
         let screen = XDefaultScreen(display);
         let gc = XDefaultGC(display, 0);
         let width = XDisplayWidth(display, screen) as u32;
@@ -129,38 +57,116 @@ fn set_image_as_background(display: *mut Display, ximage: XImage) -> XImage {
         let root = XRootWindow(display, screen);
         let depth = XDefaultDepth(display, screen) as u32;
 
-        XSetCloseDownMode(display, RetainPermanent);
-
-        println!("{:?} {:?} {:?} {:?} {:?}", display, root, width, height, depth);
-        println!("ximage: {:?}", *(ximage.data));
-
         let pixmap = XCreatePixmap(display, root, width, height, depth);
-        XSync(display, False);
 
-        let mut image = ximage;
+        let delay = time::Duration::from_millis(100);
+        
 
-        XPutImage(
-            display,
-            pixmap,
-            gc,
-            &mut image,
-            0, 0, 0, 0,
-            ximage.width as u32, ximage.height as u32
-        );
+        for _x in 0..10 {
+//        loop {
+            for i in 0..(images.len()) {
+                let mut image = images[i];
 
-        XFlush(display);
+                println!("XPutImage {}", i);
+                XPutImage(
+                    display,
+                    pixmap,
+                    gc,
+                    &mut image,
+                    0, 0, 0, 0,
+                    image.width as u32, image.height as u32
+                );
+                XSync(display, False);
 
-        if !set_root_atoms(display, root, pixmap) {
-            println!("set_root_atoms failed!");
+                println!("XClearWindow {}", i);
+                println!("Pixmap {}", pixmap);
+                XClearWindow(display, root);
+                XSync(display, False);
+               
+                println!("Set Atoms {}", i);
+                println!("Pixmap {}", pixmap);
+                if !set_root_atoms(display, root, pixmap) {
+                    println!("set_root_atoms failed!");
+                }
+
+                println!("XSetWindowBackgroundPixmap {}", i);
+                println!("Pixmap {}", pixmap);
+                XSetWindowBackgroundPixmap(display, root, pixmap);
+                XSync(display, False);
+                
+                println!("XSync {}", i);
+                XSync(display, False);
+
+                thread::sleep(delay);
+            }
         }
 
-        XSetWindowBackgroundPixmap(display, root, pixmap);
-        XClearWindow(display, root);
-        XFlush(display);
-        
-        return image;
+        // TODO React on signal in loop
+
+        XCloseDisplay(display);
     }
 }
+
+fn convert_frames_to_ximages(
+    xdisplay: *mut Display, frames: Steps<BufReader<File>>) 
+    -> (Vec<XImage>, Vec<Vec<c_char>>)
+{
+    // Result-structures
+    let mut image_structs: Vec<XImage> = Vec::new();
+    let mut image_rasters: Vec<Vec<c_char>> = Vec::new();
+
+    let mut frame_count = 0;
+    
+    for step_option in frames {
+        let step = step_option.expect("Empty step in animation");
+        let raster = step.raster();
+
+        frame_count = frame_count + 1;
+        println!("Step: {}", frame_count);
+        println!("Delay: {:?}", step.delay_time_cs());
+        println!("Width: {}", raster.width());
+        println!("Height: {}", raster.height());
+
+        unsafe {
+            let xscreen = XDefaultScreenOfDisplay(xdisplay);
+            let xvisual = XDefaultVisualOfScreen(xscreen);
+
+            let ximage = XCreateImage(
+                xdisplay,
+                xvisual,
+                24,
+                ZPixmap,
+                0,
+                ptr::null_mut(), 
+                raster.width(),
+                raster.height(),
+                32,
+                0 
+            );
+
+            let data_size = ((*ximage).bytes_per_line * (*ximage).height) as usize;
+            let mut data: Vec<c_char> = Vec::with_capacity(data_size);
+
+            for pixel_channel in raster.as_u8_slice() {
+                data.push(*pixel_channel as i8);
+            }
+
+            assert_eq!(data.len(), data_size, 
+                "data-vector must be same length (is {}) as its anticipated capacity and size (is {})", 
+                data.len(), data_size);
+
+            let data_ptr = data.as_mut_ptr();
+            (*ximage).data = data_ptr;       
+       
+            image_structs.push(*ximage);
+            image_rasters.push(data);
+
+        }
+    }
+
+    return (image_structs, image_rasters);
+}
+
 
 fn main() {
     // TODO Read Args
@@ -301,7 +307,10 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
             if // *data_root > 0 
                //  && *data_eroot > 0 
                  ptype == XA_PIXMAP 
-                && root_pixmap_id == eroot_pixmap_id {
+                && root_pixmap_id == eroot_pixmap_id 
+                && pixmap != root_pixmap_id {
+
+                println!("Kill client responsible for _XRROTPMAP_ID {}", root_pixmap_id);
 
                 XKillClient(display, root_pixmap_id);
                 XFree(data_eroot_ptr as *mut c_void);
@@ -323,6 +332,8 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
     
     XChangeProperty(display, root, atom_root, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
     XChangeProperty(display, root, atom_eroot, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
+
+    XSync(display, False);
 
     return true;
 }
