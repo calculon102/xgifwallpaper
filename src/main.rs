@@ -59,15 +59,17 @@ fn loop_animation(steps: Steps<BufReader<File>>)
 
         let pixmap = XCreatePixmap(display, root, width, height, depth);
 
+        XClearWindow(display, root);
+        XSync(display, False);
+                
         let delay = time::Duration::from_millis(100);
-        
 
         for _x in 0..10 {
 //        loop {
             for i in 0..(images.len()) {
                 let mut image = images[i];
 
-                println!("XPutImage {}", i);
+                println!("Frame {}", i);
                 XPutImage(
                     display,
                     pixmap,
@@ -76,25 +78,13 @@ fn loop_animation(steps: Steps<BufReader<File>>)
                     0, 0, 0, 0,
                     image.width as u32, image.height as u32
                 );
-                XSync(display, False);
-
-                println!("XClearWindow {}", i);
-                println!("Pixmap {}", pixmap);
-                XClearWindow(display, root);
-                XSync(display, False);
-               
-                println!("Set Atoms {}", i);
-                println!("Pixmap {}", pixmap);
+       
                 if !set_root_atoms(display, root, pixmap) {
                     println!("set_root_atoms failed!");
                 }
 
-                println!("XSetWindowBackgroundPixmap {}", i);
-                println!("Pixmap {}", pixmap);
                 XSetWindowBackgroundPixmap(display, root, pixmap);
-                XSync(display, False);
-                
-                println!("XSync {}", i);
+      
                 XSync(display, False);
 
                 thread::sleep(delay);
@@ -102,7 +92,7 @@ fn loop_animation(steps: Steps<BufReader<File>>)
         }
 
         // TODO React on signal in loop
-
+        XFreePixmap(display, pixmap);
         XCloseDisplay(display);
     }
 }
@@ -160,115 +150,10 @@ fn convert_frames_to_ximages(
        
             image_structs.push(*ximage);
             image_rasters.push(data);
-
         }
     }
 
     return (image_structs, image_rasters);
-}
-
-
-fn main() {
-    // TODO Read Args
-    let gif_filename = String::from("/home/frank/Pictures/sample.gif");
-    
-    // TODO Analyze screen-count and resolutions
-   
-    // Load GIF
-    let steps = load_gif(gif_filename);
-
-    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    loop_animation(steps);
-}
-
-unsafe fn demo() 
-{
-    // Open display connection.
-    let display = XOpenDisplay(ptr::null());
-
-    if display.is_null() {
-        panic!("XOpenDisplay failed");
-    }
-
-    println!("ScreenCount: {}", XScreenCount(display));
-
-    let screen = XDefaultScreen(display);
-    let width = XDisplayWidth(display, screen) as u32;
-    let height = XDisplayHeight(display, screen) as u32;
-    let root = XRootWindow(display, screen);
-    let cmap = XDefaultColormap(display, screen);
-    let depth = XDefaultDepth(display, screen) as u32;
-
-    let mut color = XColor {
-        pixel: 0,
-        red: 32000,
-        green: 64000,
-        blue: 32000,
-        flags: DoRed | DoGreen | DoBlue,
-        pad: 0
-    };
-
-    let color_ptr: *mut XColor = &mut color;
-
-    println!("display: {:?}", display);
-
-    XAllocColor(display, cmap, color_ptr);
-
-    println!("display: {:?}", display);
-    
-    let pixmap = XCreatePixmap(display, root, width, height, depth);
-
-    println!("display: {:?}", display);
-
-    let mut gcvalues = XGCValues {
-        function: GXcopy,
-        plane_mask: XAllPlanes(),
-        foreground: color.pixel,
-        background: color.pixel,
-        line_width: 0,
-        line_style: 0,
-        cap_style: 0,
-        join_style: 0,
-        fill_style: 0,
-        fill_rule: 0,
-        arc_mode: 0,
-        tile: 0,
-        stipple: 0,
-        ts_x_origin: 0,
-        ts_y_origin: 0,
-        font: 0,
-        subwindow_mode: ClipByChildren,
-        graphics_exposures: True,
-        clip_x_origin: 0,
-        clip_y_origin: 0,
-        clip_mask: 0,
-        dash_offset: 0,
-        dashes: 0,
-    };
-    
-    let gc_ptr: *mut XGCValues = &mut gcvalues;
-    let gc_flags = (GCForeground | GCBackground) as u64;
-    let gc = XCreateGC(display, root, gc_flags, gc_ptr);
-
-    XFillRectangle(display, pixmap, gc, 0, 0, width, height);
-    XFreeGC(display, gc);
-    
-    println!("display: {:?}", display);
-    println!("screen: {}", screen);
-    println!("depth: {}", depth);
-    println!("width: {}", width);
-    println!("height: {}", height);
-    println!("color.pixel: {}", color.pixel);
-
-    if !set_root_atoms(display, root, pixmap) {
-        println!("set_root_atoms failed!");
-    }
-
-    XSetWindowBackgroundPixmap(display, root, pixmap);
-    XClearWindow(display, root);
-    XFlush(display);
-    XSetCloseDownMode(display, RetainPermanent);
-    XCloseDisplay(display);
 }
 
 unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bool {
@@ -303,14 +188,11 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
             let root_pixmap_id = *(data_root_ptr as *const Pixmap);
             let eroot_pixmap_id = *(data_eroot_ptr as *const Pixmap);
 
-            // Why the data_root-conversion to pixmap for equality-check???
-            if // *data_root > 0 
-               //  && *data_eroot > 0 
-                 ptype == XA_PIXMAP 
+            if ptype == XA_PIXMAP 
                 && root_pixmap_id == eroot_pixmap_id 
-                && pixmap != root_pixmap_id {
+                && pixmap != root_pixmap_id { // Don't kill myself
 
-                println!("Kill client responsible for _XRROTPMAP_ID {}", root_pixmap_id);
+                println!("Kill client responsible for _XROOTPMAP_ID {}", root_pixmap_id);
 
                 XKillClient(display, root_pixmap_id);
                 XFree(data_eroot_ptr as *mut c_void);
@@ -333,7 +215,20 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
     XChangeProperty(display, root, atom_root, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
     XChangeProperty(display, root, atom_eroot, XA_PIXMAP, 32, PropModeReplace, pixmap_ptr as *const u8, 1);
 
-    XSync(display, False);
-
     return true;
+}
+
+
+fn main() {
+    // TODO Read Args
+    //let gif_filename = String::from("/home/frank/Pictures/sample.gif");
+    let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels1.gif");
+    
+    // TODO Analyze screen-count and resolutions
+   
+    // Load GIF
+    let steps = load_gif(gif_filename);
+
+    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
+    loop_animation(steps);
 }
