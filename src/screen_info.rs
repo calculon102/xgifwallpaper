@@ -6,8 +6,8 @@ use x11::xinerama;
 use x11::xlib;
 
 pub struct ScreenInfo {
-    root_per_screen: bool,
-    screens: Vec<Screen>,
+    pub root_per_screen: bool,
+    pub screens: Vec<Screen>,
 }
 
 impl fmt::Debug for ScreenInfo {
@@ -19,24 +19,13 @@ impl fmt::Debug for ScreenInfo {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Screen {
-    screen_number: i32,
-    x_org: i32,
-    y_org: i32,
-    width: i32,
-    height: i32,
-}
-
-impl fmt::Debug for Screen {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Screen")
-            .field("screen_number", &self.screen_number)
-            .field("x_org", &self.x_org)
-            .field("y_org", &self.y_org)
-            .field("width", &self.width)
-            .field("height", &self.height)
-            .finish()
-    }
+    pub screen_number: i32,
+    pub x_org: i32,
+    pub y_org: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 pub fn get_screen_info() -> ScreenInfo {

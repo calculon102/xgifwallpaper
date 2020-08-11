@@ -1,28 +1,20 @@
+mod placement;
 mod screen_info;
 
 use gift::Decoder;
 use gift::decode::Steps;
 
 use std::ptr;
-
-use std::ffi:: {
-    CString,
-    c_void
-};
-
+use std::ffi:: { CString, c_void };
 use std::fs::File;
-
 use std::io::BufReader;
-
-use std::os::raw:: {
-    c_char
-};
-
-use std::{thread, time};
+use std::os::raw:: { c_char, c_uint };
+use std::{ thread, time };
 
 use x11::xlib::*;
 
 use screen_info::*;
+use placement::*;
 
 // TODO Include Signal handler and loop indefinetly
 // TODO Introduce cmd-opts, reading file to render from arg
@@ -32,7 +24,14 @@ use screen_info::*;
 //  https://www.x.org/releases/current/doc/xextproto/shm.html
 // TODO Refactor set_root_atoms as two functions
 // TODO Verbose mode
-// TODO Faster gif-loading / image rendering possible?
+
+struct Frame {
+    image: XImage,
+    _raster: Vec<c_char>,
+    delay: time::Duration,
+    placements: Vec<ImagePlacement>
+}
+
 
 fn load_gif(filename: String) -> Steps<BufReader<File>>
 {
@@ -49,37 +48,60 @@ fn loop_animation(steps: Steps<BufReader<File>>)
     unsafe {
         let display = XOpenDisplay(ptr::null());
         
-        let (images, _rasters) = convert_frames_to_ximages(display, steps);
+        let screen_info = get_screen_info();
+
+        let mut frames = prepare_frames(display, steps);
         
+        // Single root-loop
+        // TODO multi-root implementation
         let screen = XDefaultScreen(display);
-        let gc = XDefaultGC(display, 0);
-        let width = XDisplayWidth(display, screen) as u32;
-        let height = XDisplayHeight(display, screen) as u32;
+        let gc = XDefaultGC(display, screen);
+        let display_width = XDisplayWidth(display, screen);
+        let display_height = XDisplayHeight(display, screen);
         let root = XRootWindow(display, screen);
         let depth = XDefaultDepth(display, screen) as u32;
 
-        let pixmap = XCreatePixmap(display, root, width, height, depth);
+        let pixmap = XCreatePixmap(display, root, display_width as u32, display_height as u32, depth);
 
         XClearWindow(display, root);
         XSync(display, False);
-                
-        let delay = time::Duration::from_millis(100);
+               
+        for i in 0..(frames.len()) {
+            let image_width = frames[i].image.width;
+            let image_height = frames[i].image.height;
+
+            for screen in &screen_info.screens {
+                frames[i].placements.push(
+                    get_image_placement(
+                        image_width,
+                        image_height,
+                        screen.clone(),
+                        ImagePlacementStrategy::CENTER,
+                    )
+                );
+            }
+        }
 
         for _x in 0..10 {
 //        loop {
-            for i in 0..(images.len()) {
-                let mut image = images[i];
+            for frame in &frames {
+                let mut image = frame.image;
 
-                println!("Frame {}", i);
-                XPutImage(
-                    display,
-                    pixmap,
-                    gc,
-                    &mut image,
-                    0, 0, 0, 0,
-                    image.width as u32, image.height as u32
-                );
-       
+                for placement in &frame.placements {
+                    XPutImage(
+                        display,
+                        pixmap,
+                        gc,
+                        &mut image,
+                        placement.src_x,
+                        placement.src_y,
+                        placement.dest_x,
+                        placement.dest_y,
+                        placement.width as c_uint, 
+                        placement.height as c_uint
+                    );
+                }
+
                 if !set_root_atoms(display, root, pixmap) {
                     println!("set_root_atoms failed!");
                 }
@@ -88,7 +110,7 @@ fn loop_animation(steps: Steps<BufReader<File>>)
       
                 XSync(display, False);
 
-                thread::sleep(delay);
+                thread::sleep(frame.delay);
             }
         }
 
@@ -98,13 +120,9 @@ fn loop_animation(steps: Steps<BufReader<File>>)
     }
 }
 
-fn convert_frames_to_ximages(
-    xdisplay: *mut Display, frames: Steps<BufReader<File>>) 
-    -> (Vec<XImage>, Vec<Vec<c_char>>)
+fn prepare_frames(xdisplay: *mut Display, frames: Steps<BufReader<File>>) -> Vec<Frame>
 {
-    // Result-structures
-    let mut image_structs: Vec<XImage> = Vec::new();
-    let mut image_rasters: Vec<Vec<c_char>> = Vec::new();
+    let mut out: Vec<Frame> = Vec::new();
 
     let mut frame_count = 0;
     
@@ -150,13 +168,22 @@ fn convert_frames_to_ximages(
 
             let data_ptr = data.as_mut_ptr();
             (*ximage).data = data_ptr;       
-       
-            image_structs.push(*ximage);
-            image_rasters.push(data);
+   
+            let mut delay = step.delay_time_cs().unwrap_or(10);
+            if delay <= 0  {
+                delay = 10;
+            }
+
+            out.push(Frame {
+                image: *ximage,
+                _raster: data,
+                delay: time::Duration::from_millis((delay * 10) as u64), 
+                placements: Vec::new(),
+            });
         }
     }
 
-    return (image_structs, image_rasters);
+    return out;
 }
 
 // TODO Split into update atoms and remove old atoms
@@ -228,8 +255,6 @@ fn main() {
     //let gif_filename = String::from("/home/frank/Pictures/sample.gif");
     let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels1.gif");
     
-    let screen_info = get_screen_info();
-
     // Load GIF
     let steps = load_gif(gif_filename);
 
