@@ -1,4 +1,4 @@
-extern crate x11;
+mod screen_info;
 
 use gift::Decoder;
 use gift::decode::Steps;
@@ -22,16 +22,17 @@ use std::{thread, time};
 
 use x11::xlib::*;
 
+use screen_info::*;
 
-// TODO Center-Feature
-// TODO Scale-Feature
-// TODO Fill-Feature
-// TODO On all Screens
-// TODO Multiple images on different screens
-// TODO Minimize unsafe
-// TODO cmd-opts
+// TODO Include Signal handler and loop indefinetly
+// TODO Introduce cmd-opts, reading file to render from arg
+// TODO Find lib to Fill and Scale-Feature images
+// TODO Introduce libxshm for better performance, see
+//  https://stackoverflow.com/questions/23873175/how-to-efficiently-draw-framebuffer-content
+//  https://www.x.org/releases/current/doc/xextproto/shm.html
+// TODO Refactor set_root_atoms as two functions
 // TODO Verbose mode
-// TODO Tiling?
+// TODO Faster gif-loading / image rendering possible?
 
 fn load_gif(filename: String) -> Steps<BufReader<File>>
 {
@@ -137,6 +138,8 @@ fn convert_frames_to_ximages(
             let data_size = ((*ximage).bytes_per_line * (*ximage).height) as usize;
             let mut data: Vec<c_char> = Vec::with_capacity(data_size);
 
+            // TODO Maybe use this slice directly instead of copying it?
+            // -> Then alter assert to check on slice-length
             for pixel_channel in raster.as_u8_slice() {
                 data.push(*pixel_channel as i8);
             }
@@ -156,6 +159,7 @@ fn convert_frames_to_ximages(
     return (image_structs, image_rasters);
 }
 
+// TODO Split into update atoms and remove old atoms
 unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bool {
     let xrootmap_id = CString::new("_XROOTPMAP_ID").expect("Failed!"); 
     let esetroot_pmap_id = CString::new("ESETROOT_PMAP_ID").expect("Failed!"); 
@@ -224,8 +228,8 @@ fn main() {
     //let gif_filename = String::from("/home/frank/Pictures/sample.gif");
     let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels1.gif");
     
-    // TODO Analyze screen-count and resolutions
-   
+    let screen_info = get_screen_info();
+
     // Load GIF
     let steps = load_gif(gif_filename);
 
