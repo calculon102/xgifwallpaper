@@ -154,13 +154,11 @@ fn prepare_frames(xdisplay: *mut Display, frames: Steps<BufReader<File>>) -> Vec
             );
 
             let data_size = ((*ximage).bytes_per_line * (*ximage).height) as usize;
-            let mut data: Vec<c_char> = Vec::with_capacity(data_size);
 
-            // TODO Maybe use this slice directly instead of copying it?
-            // -> Then alter assert to check on slice-length
-            for pixel_channel in raster.as_u8_slice() {
-                data.push(*pixel_channel as i8);
-            }
+            // Have to copy slice to make available to xlib-struct.
+            // Would be better of, making a pointer to slice-data, still.
+            let i8_slice = &*(raster.as_u8_slice() as *const [u8] as *const [i8]);
+            let mut data = i8_slice.to_vec();
 
             assert_eq!(data.len(), data_size, 
                 "data-vector must be same length (is {}) as its anticipated capacity and size (is {})", 
