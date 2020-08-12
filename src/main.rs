@@ -9,14 +9,16 @@ use std::ffi:: { CString, c_void };
 use std::fs::File;
 use std::io::BufReader;
 use std::os::raw:: { c_char, c_uint };
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::{ thread, time };
+
 
 use x11::xlib::*;
 
 use screen_info::*;
 use placement::*;
 
-// TODO Include Signal handler and loop indefinetly
 // TODO Introduce cmd-opts, reading file to render from arg
 // TODO Find lib to Fill and Scale-Feature images
 // TODO Introduce libxshm for better performance, see
@@ -43,14 +45,13 @@ fn load_gif(filename: String) -> Steps<BufReader<File>>
     return decoder.into_steps();
 }
 
-fn loop_animation(steps: Steps<BufReader<File>>)
+fn loop_animation(running: Arc<AtomicBool>, steps: Steps<BufReader<File>>)
 {
     unsafe {
         let display = XOpenDisplay(ptr::null());
-        
-        let screen_info = get_screen_info();
-
-        let mut frames = prepare_frames(display, steps);
+       
+        let r = running.clone();
+        let mut frames = prepare_frames(r, display, steps);
         
         // Single root-loop
         // TODO multi-root implementation
@@ -66,6 +67,7 @@ fn loop_animation(steps: Steps<BufReader<File>>)
         XClearWindow(display, root);
         XSync(display, False);
                
+        let screen_info = get_screen_info();
         for i in 0..(frames.len()) {
             let image_width = frames[i].image.width;
             let image_height = frames[i].image.height;
@@ -82,8 +84,7 @@ fn loop_animation(steps: Steps<BufReader<File>>)
             }
         }
 
-        for _x in 0..10 {
-//        loop {
+        while running.load(Ordering::SeqCst) {
             for frame in &frames {
                 let mut image = frame.image;
 
@@ -120,13 +121,17 @@ fn loop_animation(steps: Steps<BufReader<File>>)
     }
 }
 
-fn prepare_frames(xdisplay: *mut Display, frames: Steps<BufReader<File>>) -> Vec<Frame>
+fn prepare_frames(running: Arc<AtomicBool>, xdisplay: *mut Display, frames: Steps<BufReader<File>>) -> Vec<Frame>
 {
     let mut out: Vec<Frame> = Vec::new();
 
     let mut frame_count = 0;
     
     for step_option in frames {
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
         let step = step_option.expect("Empty step in animation");
         let raster = step.raster();
 
@@ -249,6 +254,13 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
 
 
 fn main() {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+
     // TODO Read Args
     //let gif_filename = String::from("/home/frank/Pictures/sample.gif");
     let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels1.gif");
@@ -257,5 +269,5 @@ fn main() {
     let steps = load_gif(gif_filename);
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    loop_animation(steps);
+    loop_animation(running, steps);
 }
