@@ -6,7 +6,10 @@ use clap::{Arg, ArgMatches, App};
 use gift::Decoder;
 use gift::decode::Steps;
 
+use pix::rgb::Rgba8;
+
 use std::ptr;
+use std::rc::Rc;
 use std::ffi:: { CString, c_void };
 use std::fs::File;
 use std::io::BufReader;
@@ -33,7 +36,7 @@ use placement::*;
 
 struct Frame {
     image: XImage,
-    _raster: Vec<c_char>,
+    raster: Rc<Vec<c_char>>,
     delay: time::Duration,
     placements: Vec<ImagePlacement>
 }
@@ -53,13 +56,13 @@ fn load_gif(filename: &str) -> Steps<BufReader<File>>
     return decoder.into_steps();
 }
 
-fn loop_animation(running: Arc<AtomicBool>, steps: Steps<BufReader<File>>)
+fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<BufReader<File>>)
 {
     unsafe {
         let display = XOpenDisplay(ptr::null());
        
         let r = running.clone();
-        let mut frames = prepare_frames(r, display, steps);
+        let mut frames = prepare_frames(options.clone(), r, display, steps);
         
         // Single root-loop
         // TODO multi-root implementation
@@ -133,7 +136,12 @@ fn loop_animation(running: Arc<AtomicBool>, steps: Steps<BufReader<File>>)
     }
 }
 
-fn prepare_frames(running: Arc<AtomicBool>, xdisplay: *mut Display, frames: Steps<BufReader<File>>) -> Vec<Frame>
+fn prepare_frames(
+    options: Arc<Options>,
+    running: Arc<AtomicBool>, 
+    xdisplay: *mut Display, 
+    frames: Steps<BufReader<File>>
+    ) -> Vec<Frame>
 {
     let mut out: Vec<Frame> = Vec::new();
 
@@ -147,11 +155,10 @@ fn prepare_frames(running: Arc<AtomicBool>, xdisplay: *mut Display, frames: Step
         let step = step_option.expect("Empty step in animation");
         let raster = step.raster();
 
-        frame_count = frame_count + 1;
-        println!("Step: {}", frame_count);
-        println!("Delay: {:?}", step.delay_time_cs());
-        println!("Width: {}", raster.width());
-        println!("Height: {}", raster.height());
+        if options.verbose {
+            frame_count = frame_count + 1;
+            println!("Convert step {} to XImage, delay: {:?}, width: {}, height: {}", frame_count, step.delay_time_cs(), raster.width(), raster.height());
+        }
 
         unsafe {
             let xscreen = XDefaultScreenOfDisplay(xdisplay);
@@ -175,7 +182,38 @@ fn prepare_frames(running: Arc<AtomicBool>, xdisplay: *mut Display, frames: Step
             // Have to copy slice to make available to xlib-struct.
             // Would be better of, making a pointer to slice-data, still.
             let i8_slice = &*(raster.as_u8_slice() as *const [u8] as *const [i8]);
-            let mut data = i8_slice.to_vec();
+            // let mut data = i8_slice.to_vec();
+            let mut data: Vec<i8> = Vec::with_capacity(data_size);
+
+            let mut i = 0;
+            let s = 4;
+
+            // DEBUG
+            let prev_raster: Rc<Vec<i8>> = {
+                if out.len() > 0 {
+                    out.last().unwrap().raster.clone()
+                } else {
+                    // TODO User-defined background-color
+                    Rc::new(vec![0; raster.width() as usize * raster.height() as usize * std::mem::size_of::<Rgba8>()])
+                }
+            };
+
+            while i < i8_slice.len() {
+                let alpha = i8_slice[i+3] as u8;
+
+                if alpha == 255 {
+                    data.push(i8_slice[i]);
+                    data.push(i8_slice[i+1]);
+                    data.push(i8_slice[i+2]); 
+                    data.push(i8_slice[i+3]);
+                } else {
+                    data.push(prev_raster[i]);   
+                    data.push(prev_raster[i+1]);   
+                    data.push(prev_raster[i+2]);   
+                    data.push(prev_raster[i+3]);   
+                }
+                i += s;
+            }
 
             assert_eq!(data.len(), data_size, 
                 "data-vector must be same length (is {}) as its anticipated capacity and size (is {})", 
@@ -191,7 +229,7 @@ fn prepare_frames(running: Arc<AtomicBool>, xdisplay: *mut Display, frames: Step
 
             out.push(Frame {
                 image: *ximage,
-                _raster: data,
+                raster: Rc::new(data),
                 delay: time::Duration::from_millis((delay * 10) as u64), 
                 placements: Vec::new(),
             });
@@ -278,7 +316,7 @@ fn main() {
     let steps = load_gif(options.path_to_gif);
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    loop_animation(running, steps);
+    loop_animation(options.clone(), running, steps);
 }
 
 fn init_args<'a>() -> ArgMatches<'a> {
