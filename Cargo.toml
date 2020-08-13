@@ -7,8 +7,9 @@ links = "X11"
 build = "build.rs"
 
 [dependencies]
+clap = "2.33.2"
+ctrlc = "3.1.6"
 gift = "0.9.1"
 pix = "0.13.1"
-ctrlc = "3.1.6"
 x11 = "2.18.2"
 

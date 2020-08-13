@@ -1,6 +1,8 @@
 mod placement;
 mod screen_info;
 
+use clap::{Arg, ArgMatches, App};
+
 use gift::Decoder;
 use gift::decode::Steps;
 
@@ -13,19 +15,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{ thread, time };
 
-
 use x11::xlib::*;
 
 use screen_info::*;
 use placement::*;
 
-// TODO Introduce cmd-opts, reading file to render from arg
 // TODO Find lib to Fill and Scale-Feature images
 // TODO Introduce libxshm for better performance, see
 //  https://stackoverflow.com/questions/23873175/how-to-efficiently-draw-framebuffer-content
 //  https://www.x.org/releases/current/doc/xextproto/shm.html
 // TODO Refactor set_root_atoms as two functions
-// TODO Verbose mode
+// TODO default-delay as argument
+// TODO background-color as argument
+// TODO placement as argument
+// TODO repsect transparency
+// TODO Bug: Black glitches with some GIFs
 
 struct Frame {
     image: XImage,
@@ -34,8 +38,12 @@ struct Frame {
     placements: Vec<ImagePlacement>
 }
 
+struct Options<'a> {
+    path_to_gif: &'a str,
+    verbose: bool
+}
 
-fn load_gif(filename: String) -> Steps<BufReader<File>>
+fn load_gif(filename: &str) -> Steps<BufReader<File>>
 {
     let file_in = File::open(filename)
         .expect("Could not load gif");
@@ -86,6 +94,10 @@ fn loop_animation(running: Arc<AtomicBool>, steps: Steps<BufReader<File>>)
 
         while running.load(Ordering::SeqCst) {
             for frame in &frames {
+                if !running.load(Ordering::SeqCst) {
+                    break;
+                }
+
                 let mut image = frame.image;
 
                 for placement in &frame.placements {
@@ -252,22 +264,47 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
     return true;
 }
 
-
 fn main() {
+    let args = init_args();
+
+    let options = Arc::new(Options {
+        path_to_gif: args.value_of("PATH_TO_GIF").unwrap(),
+        verbose: args.is_present("VERBOSE")
+    });
     let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
 
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+    init_sigint_handler(options.clone(), running.clone());
 
-    // TODO Read Args
-    //let gif_filename = String::from("/home/frank/Pictures/sample.gif");
-    let gif_filename = String::from("/home/frank/Pictures/Wallpapers/2020-gifs/pixels1.gif");
-    
-    // Load GIF
-    let steps = load_gif(gif_filename);
+    let steps = load_gif(options.path_to_gif);
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
     loop_animation(running, steps);
+}
+
+fn init_args<'a>() -> ArgMatches<'a> {
+    return App::new("xgifwallpaper")
+        .version("0.1")
+        .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
+        .about("Animates GIF as background in your X-session")
+        .arg(Arg::with_name("VERBOSE")
+            .short("v")
+            .help("Verbose mode"))
+        .arg(Arg::with_name("PATH_TO_GIF")
+            .help("Path to GIF-file")
+            .required(true)
+            .index(1))
+        .get_matches();
+}
+
+
+fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
+    let verbose = options.verbose;
+
+    ctrlc::set_handler(move || {
+        running.store(false, Ordering::SeqCst);
+
+        if verbose {
+            println!("SIGINT received");
+        }
+    }).expect("Error setting Ctrl-C handler");
 }
