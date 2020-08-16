@@ -25,23 +25,17 @@ use x11::xshm;
 use placement::*;
 use screen_info::*;
 
-// TODO Find lib to Fill and Scale-Feature images
-// TODO Introduce libxshm for better performance, see
-//  https://stackoverflow.com/questions/23873175/how-to-efficiently-draw-framebuffer-content
-//  https://www.x.org/releases/current/doc/xextproto/shm.html
 // TODO Refactor set_root_atoms as two functions
 // TODO default-delay as argument
 // TODO background-color as argument
 // TODO placement as argument
-// TODO repsect transparency
-// TODO Bug: Black glitches with some GIFs
 
 struct Frame {
     delay: time::Duration,
-    ximage: XImage,
     placements: Vec<ImagePlacement>,
     raster: Rc<Vec<c_char>>,
-    xshminfo: Box<xshm::XShmSegmentInfo>,
+    ximage: Box<XImage>,
+    _xshminfo: Box<xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
 struct Options<'a> {
@@ -100,25 +94,23 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
         }
 
         while running.load(Ordering::SeqCst) {
-            for frame in &frames {
+            for i in 0..(frames.len()) {
                 if !running.load(Ordering::SeqCst) {
                     break;
                 }
 
-                let mut image = frame.ximage;
-
-                for placement in &frame.placements {
+                for j in 0..(frames[i].placements.len()) {
                     xshm::XShmPutImage(
                         display,
                         pixmap,
                         gc,
-                        &mut image,
-                        placement.src_x,
-                        placement.src_y,
-                        placement.dest_x,
-                        placement.dest_y,
-                        placement.width as c_uint,
-                        placement.height as c_uint,
+                        frames[i].ximage.as_mut() as *mut _,
+                        frames[i].placements[j].src_x,
+                        frames[i].placements[j].src_y,
+                        frames[i].placements[j].dest_x,
+                        frames[i].placements[j].dest_y,
+                        frames[i].placements[j].width as c_uint,
+                        frames[i].placements[j].height as c_uint,
                         False,
                     );
                 }
@@ -128,14 +120,19 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
                 }
 
                 XSetWindowBackgroundPixmap(display, root, pixmap);
-
                 XSync(display, False);
 
-                thread::sleep(frame.delay);
+                thread::sleep(frames[i].delay);
             }
         }
 
-        // TODO React on signal in loop
+        // Clean up
+        for i in 0..(frames.len()) {
+            // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
+            xshm::XShmDetach(display, frames[i]._xshminfo.as_mut() as *mut _);
+            destroy_xshm_sgmnt_inf(&mut frames[i]._xshminfo);
+        }
+
         XFreePixmap(display, pixmap);
         XCloseDisplay(display);
     }
@@ -219,6 +216,9 @@ fn prepare_frames(
             create_xshm_sgmnt_inf(data_ptr.clone(), (width * height * 4) as usize).unwrap();
         let ximage =
             create_xshm_image(xdisplay, xvisual, &mut xshminfo, width, height, 24).unwrap();
+        unsafe {
+            xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
+        };
 
         let data_size = unsafe { ((*ximage).bytes_per_line * (*ximage).height) as usize };
 
@@ -230,23 +230,16 @@ fn prepare_frames(
             data_size
         );
 
-        unsafe {
-            // xshminfo.shmaddr = data_ptr.as_ptr() as *mut _;
-            // (*ximage).data = data_ptr.as_ptr() as *mut _;
-            xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
-        };
-
         let mut delay = step.delay_time_cs().unwrap_or(10);
         if delay <= 0 {
             delay = 10;
         }
-
         out.push(Frame {
             delay: time::Duration::from_millis((delay * 10) as u64),
             placements: Vec::new(),
             raster: data_ptr,
-            ximage: unsafe { *ximage },
-            xshminfo: xshminfo,
+            ximage: unsafe { Box::new(*ximage) },
+            _xshminfo: xshminfo,
         });
     }
 
