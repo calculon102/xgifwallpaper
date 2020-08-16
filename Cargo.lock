@@ -195,7 +195,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xgifwall"
+name = "xgifwallpaper"
 version = "0.1.0"
 dependencies = [
  "clap",
