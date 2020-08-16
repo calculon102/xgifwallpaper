@@ -375,7 +375,7 @@ unsafe fn set_root_atoms(display: *mut Display, root: u64, pixmap: Pixmap) -> bo
                     root_pixmap_id
                 );
 
-                XKillClient(display, root_pixmap_id);
+                //                XKillClient(display, root_pixmap_id);
                 XFree(data_eroot_ptr as *mut c_void);
             }
 
