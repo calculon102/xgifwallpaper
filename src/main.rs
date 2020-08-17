@@ -1,5 +1,6 @@
 mod placement;
 mod screen_info;
+mod xatoms;
 
 use clap::{App, Arg, ArgMatches};
 
@@ -8,11 +9,11 @@ use gift::Decoder;
 
 use pix::rgb::Rgba8;
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::fs::File;
 use std::io::BufReader;
 use std::mem;
-use std::os::raw::{c_char, c_int, c_uint, c_ulong};
+use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr::{null, null_mut};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,7 +25,7 @@ use x11::xshm;
 
 use placement::*;
 use screen_info::*;
-
+use xatoms::*;
 // TODO default-delay as argument
 // TODO background-color as argument
 // TODO placement as argument
@@ -34,10 +35,10 @@ struct Frame {
     placements: Vec<ImagePlacement>,
     raster: Rc<Vec<c_char>>,
     ximage: Box<XImage>,
-    _xshminfo: Box<xshm::XShmSegmentInfo>, // Must exist as long ximage is used
+    xshminfo: Box<xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
-struct Options<'a> {
+pub struct Options<'a> {
     path_to_gif: &'a str,
     verbose: bool,
 }
@@ -93,17 +94,8 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
             }
         }
 
-        let atom_root = XInternAtom(
-            display,
-            CString::new(ATOM_XROOTPMAP_ID).unwrap().as_ptr(),
-            False,
-        );
-
-        let atom_eroot = XInternAtom(
-            display,
-            CString::new(ATOM_ESETROOT_PMAP_ID).unwrap().as_ptr(),
-            False,
-        );
+        let atom_root = get_root_pixmap_atom(display);
+        let atom_eroot = get_eroot_pixmap_atom(display);
 
         while running.load(Ordering::SeqCst) {
             for i in 0..(frames.len()) {
@@ -141,8 +133,8 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
         // Clean up
         for i in 0..(frames.len()) {
             // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
-            xshm::XShmDetach(display, frames[i]._xshminfo.as_mut() as *mut _);
-            destroy_xshm_sgmnt_inf(&mut frames[i]._xshminfo);
+            xshm::XShmDetach(display, frames[i].xshminfo.as_mut() as *mut _);
+            destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
         }
 
         XFreePixmap(display, pixmap);
@@ -246,12 +238,13 @@ fn prepare_frames(
         if delay <= 0 {
             delay = 10;
         }
+
         out.push(Frame {
             delay: time::Duration::from_millis((delay * 10) as u64),
             placements: Vec::new(),
             raster: data_ptr,
             ximage: unsafe { Box::new(*ximage) },
-            _xshminfo: xshminfo,
+            xshminfo: xshminfo,
         });
     }
 
@@ -311,134 +304,6 @@ fn create_xshm_image(
         (*ximg).data = xshminfo.shmaddr;
         Ok(ximg)
     }
-}
-
-const ATOM_XROOTPMAP_ID: &str = "_XROOTPMAP_ID";
-const ATOM_ESETROOT_PMAP_ID: &str = "ESETROOT_PMAP_ID";
-
-fn remove_root_pixmap_atoms(
-    display: *mut Display,
-    root: c_ulong,
-    pixmap: Pixmap,
-    options: Arc<Options>,
-) -> bool {
-    let mut removed_atoms = false;
-
-    let atom_root = unsafe {
-        XInternAtom(
-            display,
-            CString::new(ATOM_XROOTPMAP_ID).unwrap().as_ptr(),
-            True,
-        )
-    };
-
-    if atom_root != 0 {
-        removed_atoms = remove_root_pixmap_atom(display, root, pixmap, atom_root, options.clone());
-    }
-
-    let atom_eroot = unsafe {
-        XInternAtom(
-            display,
-            CString::new(ATOM_ESETROOT_PMAP_ID).unwrap().as_ptr(),
-            True,
-        )
-    };
-
-    if atom_eroot != 0 {
-        removed_atoms = removed_atoms
-            || remove_root_pixmap_atom(display, root, pixmap, atom_eroot, options.clone());
-    }
-
-    removed_atoms
-}
-
-fn remove_root_pixmap_atom(
-    display: *mut Display,
-    root: c_ulong,
-    pixmap: Pixmap,
-    atom: c_ulong,
-    options: Arc<Options>,
-) -> bool {
-    let data = CString::new("").expect("Failed!");
-    let mut data_ptr: *mut u8 = data.as_ptr() as *mut u8;
-
-    let mut ptype = 0 as u64;
-    let mut format = 0 as i32;
-    let mut length = 0 as u64;
-    let mut after = 0 as u64;
-
-    let result = unsafe {
-        XGetWindowProperty(
-            display,
-            root,
-            atom,
-            0,
-            1,
-            False,
-            AnyPropertyType as u64,
-            &mut ptype,
-            &mut format,
-            &mut length,
-            &mut after,
-            &mut data_ptr,
-        )
-    };
-
-    if result != 0 && ptype == XA_PIXMAP {
-        let root_pixmap_id = unsafe { *(data_ptr as *const Pixmap) };
-
-        if pixmap != root_pixmap_id {
-            if options.verbose {
-                println!(
-                    "Kill client responsible for _XROOTPMAP_ID {}",
-                    root_pixmap_id
-                );
-            }
-
-            unsafe { XKillClient(display, root_pixmap_id) };
-            unsafe { XFree(data_ptr as *mut c_void) };
-            return true;
-        }
-    }
-
-    false
-}
-
-fn update_root_pixmap_atoms(
-    display: *mut Display,
-    root: u64,
-    pixmap_ptr: *const Pixmap,
-    atom_root: c_ulong,
-    atom_eroot: c_ulong,
-) -> bool {
-    // The pixmap itself has not changed, but its content. XChangeProperty
-    // generates messages to all X-clients, to update their own rendering, if
-    // needed.
-    unsafe {
-        XChangeProperty(
-            display,
-            root,
-            atom_root,
-            XA_PIXMAP,
-            32,
-            PropModeReplace,
-            pixmap_ptr as *const u8,
-            1,
-        );
-
-        XChangeProperty(
-            display,
-            root,
-            atom_eroot,
-            XA_PIXMAP,
-            32,
-            PropModeReplace,
-            pixmap_ptr as *const u8,
-            1,
-        );
-    }
-
-    true
 }
 
 fn main() {
