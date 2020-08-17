@@ -21,15 +21,19 @@ const ATOM_XROOTPMAP_ID: &str = "_XROOTPMAP_ID";
 const ATOM_ESETROOT_PMAP_ID: &str = "ESETROOT_PMAP_ID";
 
 pub fn get_root_pixmap_atom(display: *mut Display) -> c_ulong {
-    get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID), False)
+    get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID).as_ptr(), False)
 }
 
 pub fn get_eroot_pixmap_atom(display: *mut Display) -> c_ulong {
-    get_atom(display, get_atom_name(ATOM_ESETROOT_PMAP_ID), False)
+    get_atom(
+        display,
+        get_atom_name(ATOM_ESETROOT_PMAP_ID).as_ptr(),
+        False,
+    )
 }
 
-fn get_atom_name(name: &str) -> *const c_char {
-    CString::new(name).unwrap().as_ptr()
+fn get_atom_name(name: &str) -> CString {
+    CString::new(name).unwrap()
 }
 
 fn get_atom(display: *mut Display, name: *const c_char, only_if_exists: c_int) -> c_ulong {
@@ -44,14 +48,12 @@ pub fn remove_root_pixmap_atoms(
 ) -> bool {
     let mut removed_atoms = false;
 
-    let atom_root = get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID), True);
-
+    let atom_root = get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID).as_ptr(), True);
     if atom_root != 0 {
         removed_atoms = remove_root_pixmap_atom(display, root, pixmap, atom_root, options.clone());
     }
 
-    let atom_eroot = get_atom(display, get_atom_name(ATOM_ESETROOT_PMAP_ID), True);
-
+    let atom_eroot = get_atom(display, get_atom_name(ATOM_ESETROOT_PMAP_ID).as_ptr(), True);
     if atom_eroot != 0 {
         removed_atoms = removed_atoms
             || remove_root_pixmap_atom(display, root, pixmap, atom_eroot, options.clone());
@@ -67,7 +69,8 @@ fn remove_root_pixmap_atom(
     atom: c_ulong,
     options: Arc<Options>,
 ) -> bool {
-    let data = CString::new("").expect("Failed!");
+    // Better or more declarative way to create a mutable char-pointer?
+    let data = CString::new("").unwrap();
     let mut data_ptr: *mut u8 = data.as_ptr() as *mut u8;
 
     let mut ptype = 0 as u64;
@@ -122,29 +125,28 @@ pub fn update_root_pixmap_atoms(
     // The pixmap itself has not changed, but its content. XChangeProperty
     // generates messages to all X-clients, to update their own rendering, if
     // needed.
+    update_root_pixmap_atom(display, root, pixmap_ptr, atom_root);
+    update_root_pixmap_atom(display, root, pixmap_ptr, atom_eroot);
+
+    true
+}
+
+fn update_root_pixmap_atom(
+    display: *mut Display,
+    root: u64,
+    pixmap_ptr: *const Pixmap,
+    atom: c_ulong,
+) {
     unsafe {
         XChangeProperty(
             display,
             root,
-            atom_root,
+            atom,
             XA_PIXMAP,
             32,
             PropModeReplace,
             pixmap_ptr as *const u8,
             1,
-        );
-
-        XChangeProperty(
-            display,
-            root,
-            atom_eroot,
-            XA_PIXMAP,
-            32,
-            PropModeReplace,
-            pixmap_ptr as *const u8,
-            1,
-        );
-    }
-
-    true
+        )
+    };
 }
