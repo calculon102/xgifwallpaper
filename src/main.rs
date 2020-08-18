@@ -26,9 +26,11 @@ use x11::xshm;
 use placement::*;
 use screen_info::*;
 use xatoms::*;
-// TODO default-delay as argument
-// TODO background-color as argument
-// TODO placement as argument
+
+// TODO v0.1: default-delay as argument
+// TODO v0.1: background-color as argument
+// TODO v0.2: placement as argument
+// TODO Bugfix: Clear-Background after each frame for transparent GIFs
 
 struct Frame {
     delay: time::Duration,
