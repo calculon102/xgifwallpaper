@@ -309,6 +309,11 @@ fn create_xshm_image(
 }
 
 fn main() {
+    if !is_xshm_available() {
+        eprintln!("The X server in use does not support the shared memory extension (xshm).");
+        std::process::exit(1);
+    }
+
     let args = init_args();
 
     let options = Arc::new(Options {
@@ -323,6 +328,16 @@ fn main() {
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
     loop_animation(options.clone(), running, steps);
+}
+
+fn is_xshm_available() -> bool {
+    let display = unsafe { XOpenDisplay(null()) };
+
+    let status = unsafe { xshm::XShmQueryExtension(display) };
+
+    unsafe { XCloseDisplay(display) };
+
+    status == True
 }
 
 fn init_args<'a>() -> ArgMatches<'a> {
