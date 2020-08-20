@@ -1,5 +1,6 @@
 mod placement;
 mod screen_info;
+mod shm;
 mod xatoms;
 
 use clap::{App, Arg, ArgMatches};
@@ -9,22 +10,20 @@ use gift::Decoder;
 
 use pix::rgb::Rgba8;
 
-use std::ffi::c_void;
 use std::fs::File;
 use std::io::BufReader;
-use std::mem;
-use std::os::raw::{c_char, c_int, c_uint};
-use std::ptr::{null, null_mut};
+use std::os::raw::{c_char, c_uint};
+use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, time};
 
 use x11::xlib::*;
-use x11::xshm;
 
 use placement::*;
 use screen_info::*;
+use shm::*;
 use xatoms::*;
 
 // TODO v0.1: default-delay as argument
@@ -37,7 +36,7 @@ struct Frame {
     placements: Vec<ImagePlacement>,
     raster: Rc<Vec<c_char>>,
     ximage: Box<XImage>,
-    xshminfo: Box<xshm::XShmSegmentInfo>, // Must exist as long ximage is used
+    xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
 pub struct Options<'a> {
@@ -55,7 +54,7 @@ fn load_gif(filename: &str) -> Steps<BufReader<File>> {
 
 fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<BufReader<File>>) {
     unsafe {
-        let display = XOpenDisplay(null());
+        let display = XOpenDisplay(ptr::null());
 
         let r = running.clone();
         let mut frames = prepare_frames(options.clone(), r, display, steps);
@@ -106,7 +105,7 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
                 }
 
                 for j in 0..(frames[i].placements.len()) {
-                    xshm::XShmPutImage(
+                    x11::xshm::XShmPutImage(
                         display,
                         pixmap,
                         gc,
@@ -125,6 +124,7 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
                     println!("set_root_atoms failed!");
                 }
 
+                XClearWindow(display, root);
                 XSetWindowBackgroundPixmap(display, root, pixmap);
                 XSync(display, False);
 
@@ -135,7 +135,7 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
         // Clean up
         for i in 0..(frames.len()) {
             // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
-            xshm::XShmDetach(display, frames[i].xshminfo.as_mut() as *mut _);
+            x11::xshm::XShmDetach(display, frames[i].xshminfo.as_mut() as *mut _);
             destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
         }
 
@@ -223,7 +223,7 @@ fn prepare_frames(
         let ximage =
             create_xshm_image(xdisplay, xvisual, &mut xshminfo, width, height, 24).unwrap();
         unsafe {
-            xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
+            x11::xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
         };
 
         let data_size = unsafe { ((*ximage).bytes_per_line * (*ximage).height) as usize };
@@ -253,61 +253,6 @@ fn prepare_frames(
     return out;
 }
 
-fn create_xshm_sgmnt_inf(data: Rc<Vec<i8>>, size: usize) -> Result<Box<xshm::XShmSegmentInfo>, u8> {
-    use libc::size_t;
-    let shmid: c_int =
-        unsafe { libc::shmget(libc::IPC_PRIVATE, size as size_t, libc::IPC_CREAT | 0o777) };
-    if shmid < 0 {
-        return Err(1);
-    }
-    let shmaddr: *mut libc::c_void = unsafe { libc::shmat(shmid, null(), 0) };
-    if shmaddr == ((usize::max_value()) as *mut libc::c_void) {
-        return Err(2);
-    }
-    let mut shmidds: libc::shmid_ds = unsafe { mem::zeroed() };
-    unsafe { libc::shmctl(shmid, libc::IPC_RMID, &mut shmidds) };
-
-    unsafe { libc::memcpy(shmaddr as *mut c_void, data.as_ptr() as *mut _, size) };
-
-    Ok(Box::new(xshm::XShmSegmentInfo {
-        shmseg: 0,
-        shmid,
-        shmaddr: (shmaddr as *mut c_char),
-        readOnly: 0,
-    }))
-}
-
-fn destroy_xshm_sgmnt_inf(seginf: &mut Box<xshm::XShmSegmentInfo>) {
-    unsafe { libc::shmdt(seginf.shmaddr as *mut libc::c_void) };
-}
-
-fn create_xshm_image(
-    dspl: *mut Display,
-    vsl: *mut Visual,
-    xshminfo: &mut Box<xshm::XShmSegmentInfo>,
-    width: u32,
-    height: u32,
-    depth: u32,
-) -> Result<*mut XImage, u8> {
-    unsafe {
-        let ximg = xshm::XShmCreateImage(
-            dspl,
-            vsl,
-            depth,
-            ZPixmap,
-            null_mut(),
-            xshminfo.as_mut() as *mut _,
-            width,
-            height,
-        );
-        if ximg == null_mut() {
-            return Err(1);
-        }
-        (*ximg).data = xshminfo.shmaddr;
-        Ok(ximg)
-    }
-}
-
 fn main() {
     if !is_xshm_available() {
         eprintln!("The X server in use does not support the shared memory extension (xshm).");
@@ -328,16 +273,6 @@ fn main() {
 
     // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
     loop_animation(options.clone(), running, steps);
-}
-
-fn is_xshm_available() -> bool {
-    let display = unsafe { XOpenDisplay(null()) };
-
-    let status = unsafe { xshm::XShmQueryExtension(display) };
-
-    unsafe { XCloseDisplay(display) };
-
-    status == True
 }
 
 fn init_args<'a>() -> ArgMatches<'a> {
