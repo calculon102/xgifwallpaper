@@ -10,9 +10,10 @@ use gift::Decoder;
 
 use pix::rgb::Rgba8;
 
+use std::ffi::CString;
 use std::fs::File;
 use std::io::BufReader;
-use std::os::raw::{c_char, c_uint};
+use std::os::raw::{c_char, c_int, c_uint, c_ulong};
 use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,9 +28,17 @@ use shm::*;
 use xatoms::*;
 
 // TODO v0.1: default-delay as argument
-// TODO v0.1: background-color as argument
+// TODO v0.2: Refactor frame-preparation and animation-loop out of prototyping-state
 // TODO v0.2: placement as argument
+// TODO v0.3: Multi-root handling
 // TODO Bugfix: Clear-Background after each frame for transparent GIFs
+
+const ARG_COLOR: &str = "COLOR";
+const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
+const ARG_VERBOSE: &str = "VERBOSE";
+
+const EXIT_XSHM_UNSUPPORTED: i32 = 1;
+const EXIT_UNKOWN_COLOR: i32 = 2;
 
 struct Frame {
     delay: time::Duration,
@@ -40,6 +49,7 @@ struct Frame {
 }
 
 pub struct Options<'a> {
+    background_color: &'a str,
     path_to_gif: &'a str,
     verbose: bool,
 }
@@ -55,26 +65,18 @@ fn load_gif(filename: &str) -> Steps<BufReader<File>> {
 fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<BufReader<File>>) {
     unsafe {
         let display = XOpenDisplay(ptr::null());
+        let screen = XDefaultScreen(display);
 
-        let r = running.clone();
-        let mut frames = prepare_frames(options.clone(), r, display, steps);
+        let color = parse_color(display, screen, options.background_color);
+
+        let mut frames = prepare_frames(display, steps, &color, options.clone(), running.clone());
 
         // Single root-loop
         // TODO multi-root implementation
-        let screen = XDefaultScreen(display);
         let gc = XDefaultGC(display, screen);
-        let display_width = XDisplayWidth(display, screen);
-        let display_height = XDisplayHeight(display, screen);
         let root = XRootWindow(display, screen);
-        let depth = XDefaultDepth(display, screen) as u32;
 
-        let pixmap = XCreatePixmap(
-            display,
-            root,
-            display_width as u32,
-            display_height as u32,
-            depth,
-        );
+        let pixmap = prepare_pixmap(display, screen, root, &gc, &color);
 
         remove_root_pixmap_atoms(display, root, pixmap, options.clone());
         XClearWindow(display, root);
@@ -145,10 +147,11 @@ fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<
 }
 
 fn prepare_frames(
-    options: Arc<Options>,
-    running: Arc<AtomicBool>,
     xdisplay: *mut Display,
     frames: Steps<BufReader<File>>,
+    color: &Box<XColor>,
+    options: Arc<Options>,
+    running: Arc<AtomicBool>,
 ) -> Vec<Frame> {
     let mut out: Vec<Frame> = Vec::new();
     let mut frame_count = 0;
@@ -179,23 +182,37 @@ fn prepare_frames(
         let i8_slice = unsafe { &*(raster.as_u8_slice() as *const [u8] as *const [i8]) };
         let mut data: Vec<i8> = Vec::with_capacity((width * height * 4) as usize);
 
-        let mut i = 0;
         let s = 4;
 
         let prev_raster: Rc<Vec<i8>> = {
             if out.len() > 0 {
                 out.last().unwrap().raster.clone()
             } else {
-                // TODO User-defined background-color
-                Rc::new(vec![
-                    0;
-                    raster.width() as usize
-                        * raster.height() as usize
-                        * std::mem::size_of::<Rgba8>()
-                ])
+                let capacity: usize = raster.width() as usize
+                    * raster.height() as usize
+                    * std::mem::size_of::<Rgba8>();
+
+                let mut solid_color: Vec<i8> = Vec::with_capacity(capacity);
+                let mut solid_color_index: usize = 0;
+
+                let red = (color.red / 256) as i8;
+                let green = (color.green / 256) as i8;
+                let blue = (color.blue / 256) as i8;
+
+                while solid_color_index < capacity {
+                    solid_color.push(blue);
+                    solid_color.push(green);
+                    solid_color.push(red);
+                    solid_color.push(-127); // Alpha, weird to use i8 for rgb-values, here 255
+
+                    solid_color_index += s;
+                }
+
+                Rc::new(solid_color)
             }
         };
 
+        let mut i = 0;
         while i < i8_slice.len() {
             let alpha = i8_slice[i + 3] as u8;
 
@@ -253,17 +270,81 @@ fn prepare_frames(
     return out;
 }
 
+fn parse_color(display: *mut Display, screen: c_int, color_str: &str) -> Box<XColor> {
+    let mut xcolor: XColor = XColor {
+        pixel: 0,
+        red: 0,
+        green: 0,
+        blue: 0,
+        flags: 0,
+        pad: 0,
+    };
+
+    let xcolor_ptr: *mut XColor = &mut xcolor;
+
+    let cmap = unsafe { XDefaultColormap(display, screen) };
+    let result = unsafe {
+        XParseColor(
+            display,
+            cmap,
+            CString::new(color_str).unwrap().as_ptr(),
+            xcolor_ptr,
+        )
+    };
+
+    if result == 0 {
+        unsafe { XCloseDisplay(display) };
+
+        eprintln!(
+            "Unable to parse {} as X11-color. Try hex-color format: #RRGGBB.",
+            color_str
+        );
+        std::process::exit(EXIT_UNKOWN_COLOR);
+    }
+
+    unsafe { XAllocColor(display, cmap, xcolor_ptr) };
+
+    Box::new(xcolor)
+}
+
+fn prepare_pixmap(
+    display: *mut Display,
+    screen: c_int,
+    root: c_ulong,
+    gc_ref: &GC,
+    color: &Box<XColor>,
+) -> Pixmap {
+    unsafe {
+        let display_width = XDisplayWidth(display, screen) as c_uint;
+        let display_height = XDisplayHeight(display, screen) as c_uint;
+        let depth = XDefaultDepth(display, screen) as c_uint;
+
+        let pixmap = XCreatePixmap(display, root, display_width, display_height, depth);
+
+        let gc = *gc_ref;
+        XSetForeground(display, gc, color.pixel);
+        XSetBackground(display, gc, color.pixel);
+        XSetFillStyle(display, gc, FillSolid);
+
+        XDrawRectangle(display, pixmap, gc, 0, 0, display_width, display_height);
+        XFillRectangle(display, pixmap, gc, 0, 0, display_width, display_height);
+
+        pixmap
+    }
+}
+
 fn main() {
     if !is_xshm_available() {
         eprintln!("The X server in use does not support the shared memory extension (xshm).");
-        std::process::exit(1);
+        std::process::exit(EXIT_XSHM_UNSUPPORTED);
     }
 
     let args = init_args();
 
     let options = Arc::new(Options {
-        path_to_gif: args.value_of("PATH_TO_GIF").unwrap(),
-        verbose: args.is_present("VERBOSE"),
+        background_color: args.value_of(ARG_COLOR).unwrap(),
+        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
+        verbose: args.is_present(ARG_VERBOSE),
     });
     let running = Arc::new(AtomicBool::new(true));
 
@@ -279,10 +360,19 @@ fn init_args<'a>() -> ArgMatches<'a> {
     return App::new("xgifwallpaper")
         .version("0.1")
         .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
-        .about("Animates GIF as background in your X-session")
-        .arg(Arg::with_name("VERBOSE").short("v").help("Verbose mode"))
+        .about("Animates a GIF as background in your X-session")
         .arg(
-            Arg::with_name("PATH_TO_GIF")
+            Arg::with_name(ARG_COLOR)
+                .short("c")
+                .long("color")
+                .takes_value(true)
+                .value_name("X11-color")
+                .default_value("#000000")
+                .help("X11 compilant color-name to paint background."),
+        )
+        .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
+        .arg(
+            Arg::with_name(ARG_PATH_TO_GIF)
                 .help("Path to GIF-file")
                 .required(true)
                 .index(1),
