@@ -48,10 +48,78 @@ struct Frame {
     xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
+pub struct XContext {
+    display: *mut x11::xlib::Display,
+    screen: c_int,
+    root: c_ulong,
+    gc: GC,
+    pixmap: Pixmap,
+}
+
 pub struct Options<'a> {
     background_color: &'a str,
     path_to_gif: &'a str,
     verbose: bool,
+}
+
+fn main() {
+    if !is_xshm_available() {
+        eprintln!("The X server in use does not support the shared memory extension (xshm).");
+        std::process::exit(EXIT_XSHM_UNSUPPORTED);
+    }
+
+    let args = init_args();
+
+    let options = Arc::new(Options {
+        background_color: args.value_of(ARG_COLOR).unwrap(),
+        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
+        verbose: args.is_present(ARG_VERBOSE),
+    });
+    let running = Arc::new(AtomicBool::new(true));
+
+    init_sigint_handler(options.clone(), running.clone());
+
+    let steps = load_gif(options.path_to_gif);
+
+    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
+    loop_animation(options.clone(), running, steps);
+}
+
+fn init_args<'a>() -> ArgMatches<'a> {
+    return App::new("xgifwallpaper")
+        .version("0.1")
+        .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
+        .about("Animates a GIF as background in your X-session")
+        .arg(
+            Arg::with_name(ARG_COLOR)
+                .short("c")
+                .long("color")
+                .takes_value(true)
+                .value_name("X11-color")
+                .default_value("#000000")
+                .help("X11 compilant color-name to paint background."),
+        )
+        .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
+        .arg(
+            Arg::with_name(ARG_PATH_TO_GIF)
+                .help("Path to GIF-file")
+                .required(true)
+                .index(1),
+        )
+        .get_matches();
+}
+
+fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
+    let verbose = options.verbose;
+
+    ctrlc::set_handler(move || {
+        running.store(false, Ordering::SeqCst);
+
+        if verbose {
+            println!("SIGINT received");
+        }
+    })
+    .expect("Error setting Ctrl-C handler");
 }
 
 fn load_gif(filename: &str) -> Steps<BufReader<File>> {
@@ -63,86 +131,99 @@ fn load_gif(filename: &str) -> Steps<BufReader<File>> {
 }
 
 fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<BufReader<File>>) {
+    // Pixmap of struct must be set later, is mut therefore
+    let mut xcontext = create_xcontext();
+
+    let color = parse_color(&xcontext, options.background_color);
+
+    let mut frames = prepare_frames(
+        xcontext.display,
+        steps,
+        &color,
+        options.clone(),
+        running.clone(),
+    );
+
+    xcontext.pixmap = prepare_pixmap(&xcontext, &color);
+
+    clear_background(&xcontext, options.clone());
+
+    do_animation(&xcontext, &mut frames, running.clone());
+
+    clean_up(&xcontext, &mut frames);
+}
+
+fn create_xcontext() -> Box<XContext> {
+    let display = unsafe { XOpenDisplay(ptr::null()) };
+    let screen = unsafe { XDefaultScreen(display) };
+    let gc = unsafe { XDefaultGC(display, screen) };
+    let root = unsafe { XRootWindow(display, screen) };
+
+    Box::new(XContext {
+        display: display,
+        screen: screen,
+        gc: gc,
+        root: root,
+        pixmap: 0,
+    })
+}
+fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
+    let mut xcolor: XColor = XColor {
+        pixel: 0,
+        red: 0,
+        green: 0,
+        blue: 0,
+        flags: 0,
+        pad: 0,
+    };
+
+    let xcolor_ptr: *mut XColor = &mut xcolor;
+
+    let cmap = unsafe { XDefaultColormap(xcontext.display, xcontext.screen) };
+    let result = unsafe {
+        XParseColor(
+            xcontext.display,
+            cmap,
+            CString::new(color_str).unwrap().as_ptr(),
+            xcolor_ptr,
+        )
+    };
+
+    if result == 0 {
+        unsafe { XCloseDisplay(xcontext.display) };
+
+        eprintln!(
+            "Unable to parse {} as X11-color. Try hex-color format: #RRGGBB.",
+            color_str
+        );
+        std::process::exit(EXIT_UNKOWN_COLOR);
+    }
+
+    unsafe { XAllocColor(xcontext.display, cmap, xcolor_ptr) };
+
+    Box::new(xcolor)
+}
+
+fn prepare_pixmap(xcontext: &Box<XContext>, color: &Box<XColor>) -> Pixmap {
+    let dsp = xcontext.display;
+    let scr = xcontext.screen;
+    let gc = xcontext.gc;
+
     unsafe {
-        let display = XOpenDisplay(ptr::null());
-        let screen = XDefaultScreen(display);
+        let dsp_width = XDisplayWidth(dsp, scr) as c_uint;
+        let dsp_height = XDisplayHeight(dsp, scr) as c_uint;
+        let depth = XDefaultDepth(dsp, scr) as c_uint;
 
-        let color = parse_color(display, screen, options.background_color);
+        let pixmap = XCreatePixmap(dsp, xcontext.root, dsp_width, dsp_height, depth);
 
-        let mut frames = prepare_frames(display, steps, &color, options.clone(), running.clone());
+        XSetForeground(dsp, gc, color.pixel);
+        XSetBackground(dsp, gc, color.pixel);
+        XSetFillStyle(dsp, gc, FillSolid);
 
-        // Single root-loop
-        // TODO multi-root implementation
-        let gc = XDefaultGC(display, screen);
-        let root = XRootWindow(display, screen);
+        XDrawRectangle(dsp, pixmap, gc, 0, 0, dsp_width, dsp_height);
+        XFillRectangle(dsp, pixmap, gc, 0, 0, dsp_width, dsp_height);
 
-        let pixmap = prepare_pixmap(display, screen, root, &gc, &color);
-
-        remove_root_pixmap_atoms(display, root, pixmap, options.clone());
-        XClearWindow(display, root);
-        XSync(display, False);
-
-        let screen_info = get_screen_info();
-        for i in 0..(frames.len()) {
-            let image_width = frames[i].ximage.width;
-            let image_height = frames[i].ximage.height;
-
-            for screen in &screen_info.screens {
-                frames[i].placements.push(get_image_placement(
-                    image_width,
-                    image_height,
-                    screen.clone(),
-                    ImagePlacementStrategy::CENTER,
-                ));
-            }
-        }
-
-        let atom_root = get_root_pixmap_atom(display);
-        let atom_eroot = get_eroot_pixmap_atom(display);
-
-        while running.load(Ordering::SeqCst) {
-            for i in 0..(frames.len()) {
-                if !running.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                for j in 0..(frames[i].placements.len()) {
-                    x11::xshm::XShmPutImage(
-                        display,
-                        pixmap,
-                        gc,
-                        frames[i].ximage.as_mut() as *mut _,
-                        frames[i].placements[j].src_x,
-                        frames[i].placements[j].src_y,
-                        frames[i].placements[j].dest_x,
-                        frames[i].placements[j].dest_y,
-                        frames[i].placements[j].width as c_uint,
-                        frames[i].placements[j].height as c_uint,
-                        False,
-                    );
-                }
-
-                if !update_root_pixmap_atoms(display, root, &pixmap, atom_root, atom_eroot) {
-                    println!("set_root_atoms failed!");
-                }
-
-                XClearWindow(display, root);
-                XSetWindowBackgroundPixmap(display, root, pixmap);
-                XSync(display, False);
-
-                thread::sleep(frames[i].delay);
-            }
-        }
-
-        // Clean up
-        for i in 0..(frames.len()) {
-            // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
-            x11::xshm::XShmDetach(display, frames[i].xshminfo.as_mut() as *mut _);
-            destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
-        }
-
-        XFreePixmap(display, pixmap);
-        XCloseDisplay(display);
+        pixmap
     }
 }
 
@@ -267,128 +348,91 @@ fn prepare_frames(
         });
     }
 
+    let screen_info = get_screen_info();
+    for i in 0..(out.len()) {
+        let image_width = out[i].ximage.width;
+        let image_height = out[i].ximage.height;
+
+        for screen in &screen_info.screens {
+            out[i].placements.push(get_image_placement(
+                image_width,
+                image_height,
+                screen.clone(),
+                ImagePlacementStrategy::CENTER,
+            ));
+        }
+    }
+
     return out;
 }
 
-fn parse_color(display: *mut Display, screen: c_int, color_str: &str) -> Box<XColor> {
-    let mut xcolor: XColor = XColor {
-        pixel: 0,
-        red: 0,
-        green: 0,
-        blue: 0,
-        flags: 0,
-        pad: 0,
-    };
+/// Clear previous backgrounds on root
+fn clear_background(xcontext: &Box<XContext>, options: Arc<Options>) {
+    remove_root_pixmap_atoms(&xcontext, options.clone());
 
-    let xcolor_ptr: *mut XColor = &mut xcolor;
-
-    let cmap = unsafe { XDefaultColormap(display, screen) };
-    let result = unsafe {
-        XParseColor(
-            display,
-            cmap,
-            CString::new(color_str).unwrap().as_ptr(),
-            xcolor_ptr,
-        )
-    };
-
-    if result == 0 {
-        unsafe { XCloseDisplay(display) };
-
-        eprintln!(
-            "Unable to parse {} as X11-color. Try hex-color format: #RRGGBB.",
-            color_str
-        );
-        std::process::exit(EXIT_UNKOWN_COLOR);
-    }
-
-    unsafe { XAllocColor(display, cmap, xcolor_ptr) };
-
-    Box::new(xcolor)
-}
-
-fn prepare_pixmap(
-    display: *mut Display,
-    screen: c_int,
-    root: c_ulong,
-    gc_ref: &GC,
-    color: &Box<XColor>,
-) -> Pixmap {
     unsafe {
-        let display_width = XDisplayWidth(display, screen) as c_uint;
-        let display_height = XDisplayHeight(display, screen) as c_uint;
-        let depth = XDefaultDepth(display, screen) as c_uint;
-
-        let pixmap = XCreatePixmap(display, root, display_width, display_height, depth);
-
-        let gc = *gc_ref;
-        XSetForeground(display, gc, color.pixel);
-        XSetBackground(display, gc, color.pixel);
-        XSetFillStyle(display, gc, FillSolid);
-
-        XDrawRectangle(display, pixmap, gc, 0, 0, display_width, display_height);
-        XFillRectangle(display, pixmap, gc, 0, 0, display_width, display_height);
-
-        pixmap
+        XClearWindow(xcontext.display, xcontext.root);
+        XSync(xcontext.display, False);
     }
 }
 
-fn main() {
-    if !is_xshm_available() {
-        eprintln!("The X server in use does not support the shared memory extension (xshm).");
-        std::process::exit(EXIT_XSHM_UNSUPPORTED);
-    }
+fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<AtomicBool>) {
+    let display = xcontext.display;
+    let pixmap = xcontext.pixmap;
+    let gc = xcontext.gc;
+    let root = xcontext.root;
 
-    let args = init_args();
+    let atom_root = get_root_pixmap_atom(display);
+    let atom_eroot = get_eroot_pixmap_atom(display);
 
-    let options = Arc::new(Options {
-        background_color: args.value_of(ARG_COLOR).unwrap(),
-        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        verbose: args.is_present(ARG_VERBOSE),
-    });
-    let running = Arc::new(AtomicBool::new(true));
+    while running.load(Ordering::SeqCst) {
+        for i in 0..(frames.len()) {
+            if !running.load(Ordering::SeqCst) {
+                break;
+            }
 
-    init_sigint_handler(options.clone(), running.clone());
+            for j in 0..(frames[i].placements.len()) {
+                unsafe {
+                    x11::xshm::XShmPutImage(
+                        display,
+                        pixmap,
+                        gc,
+                        frames[i].ximage.as_mut() as *mut _,
+                        frames[i].placements[j].src_x,
+                        frames[i].placements[j].src_y,
+                        frames[i].placements[j].dest_x,
+                        frames[i].placements[j].dest_y,
+                        frames[i].placements[j].width as c_uint,
+                        frames[i].placements[j].height as c_uint,
+                        False,
+                    );
+                }
+            }
 
-    let steps = load_gif(options.path_to_gif);
+            if !update_root_pixmap_atoms(display, root, &pixmap, atom_root, atom_eroot) {
+                println!("set_root_atoms failed!");
+            }
 
-    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    loop_animation(options.clone(), running, steps);
-}
-
-fn init_args<'a>() -> ArgMatches<'a> {
-    return App::new("xgifwallpaper")
-        .version("0.1")
-        .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
-        .about("Animates a GIF as background in your X-session")
-        .arg(
-            Arg::with_name(ARG_COLOR)
-                .short("c")
-                .long("color")
-                .takes_value(true)
-                .value_name("X11-color")
-                .default_value("#000000")
-                .help("X11 compilant color-name to paint background."),
-        )
-        .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
-        .arg(
-            Arg::with_name(ARG_PATH_TO_GIF)
-                .help("Path to GIF-file")
-                .required(true)
-                .index(1),
-        )
-        .get_matches();
-}
-
-fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
-    let verbose = options.verbose;
-
-    ctrlc::set_handler(move || {
-        running.store(false, Ordering::SeqCst);
-
-        if verbose {
-            println!("SIGINT received");
+            unsafe {
+                XClearWindow(display, root);
+                XSetWindowBackgroundPixmap(display, root, pixmap);
+                XSync(display, False);
+            }
+            thread::sleep(frames[i].delay);
         }
-    })
-    .expect("Error setting Ctrl-C handler");
+    }
+}
+
+fn clean_up(xcontext: &Box<XContext>, frames: &mut Vec<Frame>) {
+    // Clean up
+    for i in 0..(frames.len()) {
+        // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
+        unsafe { x11::xshm::XShmDetach(xcontext.display, frames[i].xshminfo.as_mut() as *mut _) };
+        destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
+    }
+
+    unsafe {
+        XFreePixmap(xcontext.display, xcontext.pixmap);
+        XCloseDisplay(xcontext.display);
+    }
 }

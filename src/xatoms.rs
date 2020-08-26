@@ -6,6 +6,7 @@
 //! transparent background.
 
 use crate::Options;
+use crate::XContext;
 
 use std::ffi::{c_void, CString};
 
@@ -40,35 +41,32 @@ fn get_atom(display: *mut Display, name: *const c_char, only_if_exists: c_int) -
     unsafe { XInternAtom(display, name, only_if_exists) }
 }
 
-pub fn remove_root_pixmap_atoms(
-    display: *mut Display,
-    root: c_ulong,
-    pixmap: Pixmap,
-    options: Arc<Options>,
-) -> bool {
+pub fn remove_root_pixmap_atoms(xcontext: &Box<XContext>, options: Arc<Options>) -> bool {
     let mut removed_atoms = false;
 
-    let atom_root = get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID).as_ptr(), True);
+    let atom_root = get_atom(
+        xcontext.display,
+        get_atom_name(ATOM_XROOTPMAP_ID).as_ptr(),
+        True,
+    );
     if atom_root != 0 {
-        removed_atoms = remove_root_pixmap_atom(display, root, pixmap, atom_root, options.clone());
+        removed_atoms = remove_root_pixmap_atom(&xcontext, atom_root, options.clone());
     }
 
-    let atom_eroot = get_atom(display, get_atom_name(ATOM_ESETROOT_PMAP_ID).as_ptr(), True);
+    let atom_eroot = get_atom(
+        xcontext.display,
+        get_atom_name(ATOM_ESETROOT_PMAP_ID).as_ptr(),
+        True,
+    );
     if atom_eroot != 0 {
-        removed_atoms = removed_atoms
-            || remove_root_pixmap_atom(display, root, pixmap, atom_eroot, options.clone());
+        removed_atoms =
+            removed_atoms || remove_root_pixmap_atom(&xcontext, atom_eroot, options.clone());
     }
 
     removed_atoms
 }
 
-fn remove_root_pixmap_atom(
-    display: *mut Display,
-    root: c_ulong,
-    pixmap: Pixmap,
-    atom: c_ulong,
-    options: Arc<Options>,
-) -> bool {
+fn remove_root_pixmap_atom(xcontext: &Box<XContext>, atom: c_ulong, options: Arc<Options>) -> bool {
     // Better or more declarative way to create a mutable char-pointer?
     let data = CString::new("").unwrap();
     let mut data_ptr: *mut u8 = data.as_ptr() as *mut u8;
@@ -80,8 +78,8 @@ fn remove_root_pixmap_atom(
 
     let result = unsafe {
         XGetWindowProperty(
-            display,
-            root,
+            xcontext.display,
+            xcontext.root,
             atom,
             0,
             1,
@@ -98,7 +96,7 @@ fn remove_root_pixmap_atom(
     if result != 0 && ptype == XA_PIXMAP {
         let root_pixmap_id = unsafe { *(data_ptr as *const Pixmap) };
 
-        if pixmap != root_pixmap_id {
+        if xcontext.pixmap != root_pixmap_id {
             if options.verbose {
                 println!(
                     "Kill client responsible for _XROOTPMAP_ID {}",
@@ -106,7 +104,7 @@ fn remove_root_pixmap_atom(
                 );
             }
 
-            unsafe { XKillClient(display, root_pixmap_id) };
+            unsafe { XKillClient(xcontext.display, root_pixmap_id) };
             unsafe { XFree(data_ptr as *mut c_void) };
             return true;
         }
