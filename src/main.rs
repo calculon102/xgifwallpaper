@@ -3,7 +3,7 @@ mod screen_info;
 mod shm;
 mod xatoms;
 
-use clap::{App, Arg, ArgMatches};
+use clap::{value_t, App, Arg, ArgMatches};
 
 use pix::rgb::Rgba8;
 
@@ -30,11 +30,13 @@ use xatoms::*;
 // TODO v0.3: Multi-root handling
 
 const ARG_COLOR: &str = "COLOR";
+const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
 const ARG_VERBOSE: &str = "VERBOSE";
 
 const EXIT_XSHM_UNSUPPORTED: i32 = 1;
 const EXIT_UNKOWN_COLOR: i32 = 2;
+const EXIT_INVALID_DELAY: i32 = 3;
 
 struct Frame {
     delay: time::Duration,
@@ -54,6 +56,7 @@ pub struct XContext {
 
 pub struct Options<'a> {
     background_color: &'a str,
+    default_delay: u16,
     path_to_gif: &'a str,
     verbose: bool,
 }
@@ -65,12 +68,7 @@ fn main() {
     }
 
     let args = init_args();
-
-    let options = Arc::new(Options {
-        background_color: args.value_of(ARG_COLOR).unwrap(),
-        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        verbose: args.is_present(ARG_VERBOSE),
-    });
+    let options = parse_args(&args);
 
     let running = Arc::new(AtomicBool::new(true));
 
@@ -92,19 +90,46 @@ fn main() {
     clean_up(xcontext, &mut frames);
 }
 
+fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
+    let delay = value_t!(args, ARG_DELAY, u16).unwrap_or_else(|_e| {
+        eprintln!(
+            "Use a value between {} and {} as default-delay.",
+            u16::MIN,
+            u16::MAX
+        );
+        std::process::exit(EXIT_INVALID_DELAY)
+    });
+
+    Arc::new(Options {
+        background_color: args.value_of(ARG_COLOR).unwrap(),
+        default_delay: delay,
+        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
+        verbose: args.is_present(ARG_VERBOSE),
+    })
+}
+
 fn init_args<'a>() -> ArgMatches<'a> {
-    return App::new("xgifwallpaper")
+    App::new("xgifwallpaper")
         .version("0.1")
         .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
-        .about("Animates a GIF as background in your X-session")
+        .about("Animates a GIF as wallpaper in your X-session")
         .arg(
             Arg::with_name(ARG_COLOR)
-                .short("c")
-                .long("color")
+                .short("b")
+                .long("background-color")
                 .takes_value(true)
                 .value_name("X11-color")
                 .default_value("#000000")
                 .help("X11 compilant color-name to paint background."),
+        )
+        .arg(
+            Arg::with_name(ARG_DELAY)
+                .short("d")
+                .long("default-delay")
+                .takes_value(true)
+                .value_name("default-delay")
+                .default_value("10")
+                .help("Delay in centiseconds between frames, if the GIF does not specify itself."),
         )
         .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
         .arg(
@@ -113,7 +138,7 @@ fn init_args<'a>() -> ArgMatches<'a> {
                 .required(true)
                 .index(1),
         )
-        .get_matches();
+        .get_matches()
 }
 
 fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
@@ -323,9 +348,9 @@ fn prepare_frames(
             data_size
         );
 
-        let mut delay = step.delay_time_cs().unwrap_or(10);
+        let mut delay = step.delay_time_cs().unwrap_or(options.default_delay);
         if delay <= 0 {
-            delay = 10;
+            delay = options.default_delay;
         }
 
         out.push(Frame {
