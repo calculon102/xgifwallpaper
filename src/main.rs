@@ -210,26 +210,10 @@ fn prepare_frames(
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Vec<Frame> {
-    // Gather disposal methods of frames
-    let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
-    let frames = create_decoder(options.path_to_gif).into_frames();
-    for frame in frames {
-        if frame.is_ok() {
-            let f = frame.unwrap();
-
-            if f.graphic_control_ext.is_some() {
-                methods.push(f.graphic_control_ext.unwrap().disposal_method());
-            }
-
-            continue;
-        }
-
-        methods.push(gift::block::DisposalMethod::NoAction);
-    }
-
     // Decode gif-frames into raster-steps
     // TODO Try using only low-level frames
     let steps = create_decoder(options.path_to_gif).into_steps();
+    let methods = gather_disposal_methods(options.path_to_gif);
 
     let mut out: Vec<Frame> = Vec::new();
     let mut frame_index = 0;
@@ -355,13 +339,43 @@ fn prepare_frames(
         frame_index = frame_index + 1;
     }
 
+    add_placements(&mut out);
+
+    return out;
+}
+
+fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
+    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
+}
+
+fn gather_disposal_methods(filename: &str) -> Vec<gift::block::DisposalMethod> {
+    let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
+    let frames = create_decoder(filename).into_frames();
+    for frame in frames {
+        if frame.is_ok() {
+            let f = frame.unwrap();
+
+            if f.graphic_control_ext.is_some() {
+                methods.push(f.graphic_control_ext.unwrap().disposal_method());
+            }
+
+            continue;
+        }
+
+        methods.push(gift::block::DisposalMethod::NoAction);
+    }
+
+    methods
+}
+
+fn add_placements(frames: &mut Vec<Frame>) {
     let screen_info = get_screen_info();
-    for i in 0..(out.len()) {
-        let image_width = out[i].ximage.width;
-        let image_height = out[i].ximage.height;
+    for i in 0..(frames.len()) {
+        let image_width = frames[i].ximage.width;
+        let image_height = frames[i].ximage.height;
 
         for screen in &screen_info.screens {
-            out[i].placements.push(get_image_placement(
+            frames[i].placements.push(get_image_placement(
                 image_width,
                 image_height,
                 screen.clone(),
@@ -369,12 +383,6 @@ fn prepare_frames(
             ));
         }
     }
-
-    return out;
-}
-
-fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
-    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
 }
 
 /// Clear previous backgrounds on root
