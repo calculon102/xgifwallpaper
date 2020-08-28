@@ -5,9 +5,6 @@ mod xatoms;
 
 use clap::{App, Arg, ArgMatches};
 
-use gift::decode::Steps;
-use gift::Decoder;
-
 use pix::rgb::Rgba8;
 
 use std::ffi::CString;
@@ -31,7 +28,6 @@ use xatoms::*;
 // TODO v0.2: Refactor frame-preparation and animation-loop out of prototyping-state
 // TODO v0.2: placement as argument
 // TODO v0.3: Multi-root handling
-// TODO Bugfix: Clear-Background after each frame for transparent GIFs
 
 const ARG_COLOR: &str = "COLOR";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
@@ -75,14 +71,25 @@ fn main() {
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
         verbose: args.is_present(ARG_VERBOSE),
     });
+
     let running = Arc::new(AtomicBool::new(true));
 
     init_sigint_handler(options.clone(), running.clone());
 
-    let steps = load_gif(options.path_to_gif);
+    // Pixmap of struct must be set later, is mut therefore
+    let mut xcontext = create_xcontext();
 
-    // TODO Scale GIF-Frames accordingly to params (Center, Scale, Fill)
-    loop_animation(options.clone(), running, steps);
+    let color = parse_color(&xcontext, options.background_color);
+
+    let mut frames = prepare_frames(xcontext.display, &color, options.clone(), running.clone());
+
+    xcontext.pixmap = prepare_pixmap(&xcontext, &color);
+
+    clear_background(&xcontext, options.clone());
+
+    do_animation(&xcontext, &mut frames, running.clone());
+
+    clean_up(xcontext, &mut frames);
 }
 
 fn init_args<'a>() -> ArgMatches<'a> {
@@ -122,37 +129,6 @@ fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) 
     .expect("Error setting Ctrl-C handler");
 }
 
-fn load_gif(filename: &str) -> Steps<BufReader<File>> {
-    let file_in = File::open(filename).expect("Could not load gif");
-
-    let decoder = Decoder::new(file_in);
-
-    return decoder.into_steps();
-}
-
-fn loop_animation(options: Arc<Options>, running: Arc<AtomicBool>, steps: Steps<BufReader<File>>) {
-    // Pixmap of struct must be set later, is mut therefore
-    let mut xcontext = create_xcontext();
-
-    let color = parse_color(&xcontext, options.background_color);
-
-    let mut frames = prepare_frames(
-        xcontext.display,
-        steps,
-        &color,
-        options.clone(),
-        running.clone(),
-    );
-
-    xcontext.pixmap = prepare_pixmap(&xcontext, &color);
-
-    clear_background(&xcontext, options.clone());
-
-    do_animation(&xcontext, &mut frames, running.clone());
-
-    clean_up(&xcontext, &mut frames);
-}
-
 fn create_xcontext() -> Box<XContext> {
     let display = unsafe { XOpenDisplay(ptr::null()) };
     let screen = unsafe { XDefaultScreen(display) };
@@ -167,6 +143,7 @@ fn create_xcontext() -> Box<XContext> {
         pixmap: 0,
     })
 }
+
 fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
     let mut xcolor: XColor = XColor {
         pixel: 0,
@@ -229,15 +206,35 @@ fn prepare_pixmap(xcontext: &Box<XContext>, color: &Box<XColor>) -> Pixmap {
 
 fn prepare_frames(
     xdisplay: *mut Display,
-    frames: Steps<BufReader<File>>,
     color: &Box<XColor>,
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Vec<Frame> {
-    let mut out: Vec<Frame> = Vec::new();
-    let mut frame_count = 0;
+    // Gather disposal methods of frames
+    let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
+    let frames = create_decoder(options.path_to_gif).into_frames();
+    for frame in frames {
+        if frame.is_ok() {
+            let f = frame.unwrap();
 
-    for step_option in frames {
+            if f.graphic_control_ext.is_some() {
+                methods.push(f.graphic_control_ext.unwrap().disposal_method());
+            }
+
+            continue;
+        }
+
+        methods.push(gift::block::DisposalMethod::NoAction);
+    }
+
+    // Decode gif-frames into raster-steps
+    // TODO Try using only low-level frames
+    let steps = create_decoder(options.path_to_gif).into_steps();
+
+    let mut out: Vec<Frame> = Vec::new();
+    let mut frame_index = 0;
+
+    for step_option in steps {
         if !running.load(Ordering::SeqCst) {
             break;
         }
@@ -249,13 +246,13 @@ fn prepare_frames(
         let height = raster.height();
 
         if options.verbose {
-            frame_count = frame_count + 1;
             println!(
-                "Convert step {} to XImage, delay: {:?}, width: {}, height: {}",
-                frame_count,
+                "Convert step {} to XImage, delay: {:?}, width: {}, height: {}, method: {:?}",
+                frame_index,
                 step.delay_time_cs(),
                 width,
-                height
+                height,
+                methods[frame_index]
             );
         }
 
@@ -264,6 +261,9 @@ fn prepare_frames(
         let mut data: Vec<i8> = Vec::with_capacity((width * height * 4) as usize);
 
         let s = 4;
+        let red = (color.red / 256) as i8;
+        let green = (color.green / 256) as i8;
+        let blue = (color.blue / 256) as i8;
 
         let prev_raster: Rc<Vec<i8>> = {
             if out.len() > 0 {
@@ -281,7 +281,7 @@ fn prepare_frames(
                 let blue = (color.blue / 256) as i8;
 
                 while solid_color_index < capacity {
-                    solid_color.push(blue);
+                    solid_color.push(blue); // Still don't understand that order of color, but it works
                     solid_color.push(green);
                     solid_color.push(red);
                     solid_color.push(-127); // Alpha, weird to use i8 for rgb-values, here 255
@@ -302,11 +302,16 @@ fn prepare_frames(
                 data.push(i8_slice[i + 1]);
                 data.push(i8_slice[i + 2]);
                 data.push(i8_slice[i + 3]);
-            } else {
+            } else if methods[frame_index] == gift::block::DisposalMethod::Keep {
                 data.push(prev_raster[i]);
                 data.push(prev_raster[i + 1]);
                 data.push(prev_raster[i + 2]);
                 data.push(prev_raster[i + 3]);
+            } else {
+                data.push(blue);
+                data.push(green);
+                data.push(red);
+                data.push(alpha as i8);
             }
             i += s;
         }
@@ -346,6 +351,8 @@ fn prepare_frames(
             ximage: unsafe { Box::new(*ximage) },
             xshminfo: xshminfo,
         });
+
+        frame_index = frame_index + 1;
     }
 
     let screen_info = get_screen_info();
@@ -364,6 +371,10 @@ fn prepare_frames(
     }
 
     return out;
+}
+
+fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
+    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
 }
 
 /// Clear previous backgrounds on root
@@ -423,7 +434,7 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
     }
 }
 
-fn clean_up(xcontext: &Box<XContext>, frames: &mut Vec<Frame>) {
+fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>) {
     // Clean up
     for i in 0..(frames.len()) {
         // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
