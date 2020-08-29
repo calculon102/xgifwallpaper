@@ -4,7 +4,7 @@ Use an animated GIF as wallpaper on X11-systems.
 
 By using shared memory between X11 client and server, this is not as 
 performance-inefficient as it may seem at first. Nonetheless expect some
-memory to be used for bigger GIFS with a lot of frames.
+memory to be used for bigger GIFs with a lot of frames.
 
 Due to using the shared memory extenstion of X11, this program will not work
 in X11 sessions over the network.
