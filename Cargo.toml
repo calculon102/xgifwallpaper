@@ -1,7 +1,7 @@
 [package]
 authors = ["Frank Großgasteiger <frank@pixelgerecht.de>"]
 build = "build.rs"
-categories = ["command-line-utilities"]
+categories = ["command-line-utilities", "graphics"]
 description = "Use an animated GIF as wallpaper on X11-systems"
 edition = "2018"
 homepage = "https://github.com/calculon102/xgifwallwaper"
