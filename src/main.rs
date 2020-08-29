@@ -24,7 +24,6 @@ use screen_info::*;
 use shm::*;
 use xatoms::*;
 
-// TODO v0.1: default-delay as argument
 // TODO v0.2: Refactor frame-preparation and animation-loop out of prototyping-state
 // TODO v0.2: placement as argument
 // TODO v0.3: Multi-root handling
@@ -111,7 +110,7 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("xgifwallpaper")
         .version("0.1")
-        .author("Frank Grossgasteiger <frank@grossgasteiger.de>")
+        .author("Frank Großgasteiger <frank@grossgasteiger.de>")
         .about("Animates a GIF as wallpaper in your X-session")
         .arg(
             Arg::with_name(ARG_COLOR)
@@ -129,7 +128,7 @@ fn init_args<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .value_name("default-delay")
                 .default_value("10")
-                .help("Delay in centiseconds between frames, if the GIF does not specify itself."),
+                .help("Delay in centiseconds between frames, if unspecified in GIF."),
         )
         .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
         .arg(
