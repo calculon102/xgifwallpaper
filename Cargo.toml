@@ -1,10 +1,17 @@
 [package]
-name = "xgifwallpaper"
-version = "0.1.0"
 authors = ["Frank Großgasteiger <frank@pixelgerecht.de>"]
-edition = "2018"
-links = "X11"
 build = "build.rs"
+categories = ["command-line-utilities"]
+description = "Use an animated GIF as wallpaper on X11-systems"
+edition = "2018"
+homepage = "https://github.com/calculon102/xgifwallwaper"
+keywords = ["cli", "x11", "wallpaper", "gif"]
+license = "GPL-3.0"
+links = "X11 Xinerama Xext"
+name = "xgifwallpaper"
+readme = "README.md"
+repository = "https://github.com/calculon102/xgifwallpaper"
+version = "0.1.0"
 
 [dependencies]
 clap = "2.33.2"
@@ -13,4 +20,3 @@ gift = "0.9.1"
 libc = "0.2.74"
 pix = "0.13.1"
 x11 = { git = "https://github.com/baist0/x11-rs.git" }
-
