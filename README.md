@@ -9,6 +9,10 @@ memory to be used for bigger GIFs with a lot of frames.
 Due to using the shared memory extenstion of X11, this program will not work
 in X11 sessions over the network.
 
+Some window managers may hide the X11 root window, like Gnome does. There, you
+will see no visible effect.
+
+
 ## Usage
 
 See output of `--help`:
@@ -39,7 +43,7 @@ ARGS:
 `xgifwallpaper -d 10 mybackground.gif`
 
 
-## Dependencies
+## Runtime dependencies
 
 Dynamically links these X11-libs at runtime:
 
@@ -49,10 +53,36 @@ Dynamically links these X11-libs at runtime:
 
 ## Build
 
-`cargo build --release`
+### Install Rust development environment
 
-To build, the C-headers for the X11-dependencies are needed. On Arch-based
-systems these can be aquired by
+See [Installing Rust](https://www.rust-lang.org/learn/get-started).
 
-`# pacman -S libx11 libxinerama libxext`
+### Install X11-Header-files
+
+You need the header files for _X11_ itself and for the extenstions _Xinerama_
+and _XShm_.
+
+On *Arch*-based-systems, use
+
+```console
+# pacman -S libx11 libxinerama libxext
+```
+
+On *Ubuntu*-based-systems, use
+
+```console
+$ sudo apt install libx11-dev libxinerama-dev libxshm-dev
+```
+
+This should also work on Debian, but it is not verified.
+
+### Actual build
+
+From project-root:
+
+```console
+$ cargo build --release
+```
+
+The result will be built as `target/release/xgifwallpaper`.
 
