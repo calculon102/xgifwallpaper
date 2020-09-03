@@ -4,11 +4,9 @@
 //! frames of the rendered GIF. This enabled a massive performance-boost,
 //! compared to fast and frequent client-server-transmission of huge bitamps.
 
-use std::ffi::c_void;
 use std::mem;
 use std::os::raw::{c_char, c_int};
 use std::ptr::{null, null_mut};
-use std::rc::Rc;
 
 use x11::xlib::*;
 use x11::xshm;
@@ -23,10 +21,7 @@ pub fn is_xshm_available() -> bool {
     status == True
 }
 
-pub fn create_xshm_sgmnt_inf(
-    data: Rc<Vec<i8>>,
-    size: usize,
-) -> Result<Box<xshm::XShmSegmentInfo>, u8> {
+pub fn create_xshm_sgmnt_inf(size: usize) -> Result<Box<xshm::XShmSegmentInfo>, u8> {
     use libc::size_t;
     let shmid: c_int =
         unsafe { libc::shmget(libc::IPC_PRIVATE, size as size_t, libc::IPC_CREAT | 0o777) };
@@ -39,8 +34,6 @@ pub fn create_xshm_sgmnt_inf(
     }
     let mut shmidds: libc::shmid_ds = unsafe { mem::zeroed() };
     unsafe { libc::shmctl(shmid, libc::IPC_RMID, &mut shmidds) };
-
-    unsafe { libc::memcpy(shmaddr as *mut c_void, data.as_ptr() as *mut _, size) };
 
     Ok(Box::new(xshm::XShmSegmentInfo {
         shmseg: 0,
@@ -76,7 +69,6 @@ pub fn create_xshm_image(
         if ximg == null_mut() {
             return Err(1);
         }
-        (*ximg).data = xshminfo.shmaddr;
         Ok(ximg)
     }
 }

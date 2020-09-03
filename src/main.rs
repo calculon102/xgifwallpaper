@@ -7,7 +7,7 @@ use clap::{value_t, App, Arg, ArgMatches};
 
 use pix::rgb::Rgba8;
 
-use std::ffi::CString;
+use std::ffi::{c_void, CString};
 use std::fs::File;
 use std::io::BufReader;
 use std::os::raw::{c_char, c_int, c_uint, c_ulong};
@@ -264,15 +264,36 @@ fn prepare_frames(
             );
         }
 
+        // Create shared memory segment and image structure
+        let xscreen = unsafe { XDefaultScreenOfDisplay(xdisplay) };
+        let xvisual = unsafe { XDefaultVisualOfScreen(xscreen) };
+
+        let image_byte_size = (width * height * 4) as usize;
+        let mut xshminfo = create_xshm_sgmnt_inf(image_byte_size).unwrap();
+        let ximage =
+            create_xshm_image(xdisplay, xvisual, &mut xshminfo, width, height, 24).unwrap();
+
+        let is_rgb = unsafe { (*ximage).byte_order == x11::xlib::MSBFirst };
+        let rgba_indices = if is_rgb {
+            [0, 1, 2, 3] // RGBA
+        } else {
+            [2, 1, 0, 3] // BGRA
+        };
+
         // Write frame image into owned byte-vector
         let i8_slice = unsafe { &*(raster.as_u8_slice() as *const [u8] as *const [i8]) };
         let mut data: Vec<i8> = Vec::with_capacity((width * height * 4) as usize);
 
         let s = 4;
-        let red = (color.red / 256) as i8;
-        let green = (color.green / 256) as i8;
-        let blue = (color.blue / 256) as i8;
 
+        let background_rgba = [
+            (color.red / 256) as i8,
+            (color.green / 256) as i8,
+            (color.blue / 256) as i8,
+            -127 as i8,
+        ];
+
+        // Get previous frame as raster or plain color pane, if non-existing
         let prev_raster: Rc<Vec<i8>> = {
             if out.len() > 0 {
                 out.last().unwrap().raster.clone()
@@ -284,15 +305,11 @@ fn prepare_frames(
                 let mut solid_color: Vec<i8> = Vec::with_capacity(capacity);
                 let mut solid_color_index: usize = 0;
 
-                let red = (color.red / 256) as i8;
-                let green = (color.green / 256) as i8;
-                let blue = (color.blue / 256) as i8;
-
                 while solid_color_index < capacity {
-                    solid_color.push(blue); // Still don't understand that order of color, but it works
-                    solid_color.push(green);
-                    solid_color.push(red);
-                    solid_color.push(-127); // Alpha, weird to use i8 for rgb-values, here 255
+                    solid_color.push(background_rgba[rgba_indices[0]]);
+                    solid_color.push(background_rgba[rgba_indices[1]]);
+                    solid_color.push(background_rgba[rgba_indices[2]]);
+                    solid_color.push(background_rgba[rgba_indices[3]]);
 
                     solid_color_index += s;
                 }
@@ -306,34 +323,33 @@ fn prepare_frames(
             let alpha = i8_slice[i + 3] as u8;
 
             if alpha == 255 {
-                data.push(i8_slice[i]);
-                data.push(i8_slice[i + 1]);
-                data.push(i8_slice[i + 2]);
-                data.push(i8_slice[i + 3]);
+                data.push(i8_slice[i + rgba_indices[0]]);
+                data.push(i8_slice[i + rgba_indices[1]]);
+                data.push(i8_slice[i + rgba_indices[2]]);
+                data.push(i8_slice[i + rgba_indices[3]]);
             } else if methods[frame_index] == gift::block::DisposalMethod::Keep {
-                data.push(prev_raster[i]);
+                data.push(prev_raster[i + 0]);
                 data.push(prev_raster[i + 1]);
                 data.push(prev_raster[i + 2]);
                 data.push(prev_raster[i + 3]);
             } else {
-                data.push(blue);
-                data.push(green);
-                data.push(red);
+                data.push(background_rgba[rgba_indices[0]]);
+                data.push(background_rgba[rgba_indices[1]]);
+                data.push(background_rgba[rgba_indices[2]]);
                 data.push(alpha as i8);
             }
             i += s;
         }
 
+        // Copy raw data into shared memory segment of XImage
         let data_ptr: Rc<Vec<i8>> = Rc::new(data);
-
-        let xscreen = unsafe { XDefaultScreenOfDisplay(xdisplay) };
-        let xvisual = unsafe { XDefaultVisualOfScreen(xscreen) };
-
-        let mut xshminfo =
-            create_xshm_sgmnt_inf(data_ptr.clone(), (width * height * 4) as usize).unwrap();
-        let ximage =
-            create_xshm_image(xdisplay, xvisual, &mut xshminfo, width, height, 24).unwrap();
         unsafe {
+            libc::memcpy(
+                xshminfo.shmaddr as *mut c_void,
+                data_ptr.as_ptr() as *mut _,
+                image_byte_size,
+            );
+            (*ximage).data = xshminfo.shmaddr;
             x11::xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
         };
 
