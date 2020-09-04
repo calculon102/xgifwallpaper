@@ -3,14 +3,14 @@
 Use an animated GIF as wallpaper on X11-systems.
 
 By using shared memory between X11 client and server, this is not as 
-performance-inefficient as it may seem at first. Nonetheless expect some
+performance-inefficient as it may seem at first. Nonetheless, expect some
 memory to be used for bigger GIFs with a lot of frames.
 
 Due to using the shared memory extenstion of X11, this program will not work
 in X11 sessions over the network.
 
-Some window managers may hide the X11 root window, like Gnome does. There, you
-will see no visible effect.
+Some window managers may hide the X11 root window, like KDE Plasma and Gnome do.
+In that case, there will be no visible effect.
 
 
 ## Usage
@@ -42,14 +42,22 @@ ARGS:
 
 `xgifwallpaper -d 10 mybackground.gif`
 
+## Install
 
-## Runtime dependencies
+There is an [AUR-package](https://aur.archlinux.org/packages/xgifwallpaper/)
+for arch-based linux-systems.
 
-Dynamically links these X11-libs at runtime:
+For other systems, you will need to build this yourself.
 
-* xlib
-* xinerama
-* xshm
+### Runtime dependencies
+
+Dynamically links mainly X11-libs:
+
+* `xlib`
+* `xinerama`
+* `xshm`
+
+There will be build-specific dependencies
 
 ## Build
 
@@ -57,24 +65,36 @@ Dynamically links these X11-libs at runtime:
 
 See [Installing Rust](https://www.rust-lang.org/learn/get-started).
 
-### Install X11-Header-files
+### Install dependencies
 
-You need the header files for _X11_ itself and for the extenstions _Xinerama_
-and _XShm_.
+You need the header files for `X11` and its extensions `Xinerama` and `XShm`.
+Further dependencies are `libc` and a C-compiler-suite like `gcc`, rust will
+need to link the C-bindings.
 
-On *Arch*-based-systems, use
+#### Arch
+
+On *Arch*-based-systems, the packages needed are listed as `depends` and
+`makedepends` in the
+[PKGBUILD](https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=xgifwallpaper)
+of the AUR-package:
 
 ```console
-# pacman -S libx11 libxinerama libxext
+# pacman -S gcc gcc-libs git glibc libx11 libxau libxcb libxdmcp libxext libxinerama
 ```
 
+Rust is not included, as I would suggest installing it the way described above.
+
+#### Ubuntu
 On *Ubuntu*-based-systems, use
 
 ```console
 $ sudo apt install libx11-dev libxinerama-dev libxshm-dev
 ```
 
-This should also work on Debian, but it is not verified.
+This assumes, `git`, `rust`, `libc` and a C-compiler-suite are already
+installed.
+
+This should also work on Debian, but this is not verified.
 
 ### Actual build
 
