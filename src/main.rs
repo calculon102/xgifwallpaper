@@ -109,7 +109,7 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
 
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("xgifwallpaper")
-        .version("0.1")
+        .version("0.1.2")
         .author("Frank Großgasteiger <frank@grossgasteiger.de>")
         .about("Animates a GIF as wallpaper in your X-session")
         .arg(
@@ -480,6 +480,9 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
             thread::sleep(frames[i].delay);
         }
     }
+
+    delete_atom(&xcontext, atom_root);
+    delete_atom(&xcontext, atom_eroot);
 }
 
 fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>) {

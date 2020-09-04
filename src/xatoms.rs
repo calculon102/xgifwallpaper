@@ -104,6 +104,7 @@ fn remove_root_pixmap_atom(xcontext: &Box<XContext>, atom: c_ulong, options: Arc
                 );
             }
 
+            delete_atom(&xcontext, atom);
             unsafe { XKillClient(xcontext.display, root_pixmap_id) };
             unsafe { XFree(data_ptr as *mut c_void) };
             return true;
@@ -111,6 +112,10 @@ fn remove_root_pixmap_atom(xcontext: &Box<XContext>, atom: c_ulong, options: Arc
     }
 
     false
+}
+
+pub fn delete_atom(xcontext: &Box<XContext>, atom: c_ulong) -> bool {
+    unsafe { x11::xlib::XDeleteProperty(xcontext.display, xcontext.root, atom) == True }
 }
 
 pub fn update_root_pixmap_atoms(
