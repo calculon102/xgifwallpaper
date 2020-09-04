@@ -6,7 +6,7 @@ By using shared memory between X11 client and server, this is not as
 performance-inefficient as it may seem at first. Nonetheless, expect some
 memory to be used for bigger GIFs with a lot of frames.
 
-Due to using the shared memory extenstion of X11, this program will not work
+Due to using the shared memory extension of X11, this program will not work
 in X11 sessions over the network.
 
 Some window managers may hide the X11 root window, like KDE Plasma and Gnome do.
