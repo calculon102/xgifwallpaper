@@ -37,6 +37,14 @@ const EXIT_XSHM_UNSUPPORTED: i32 = 1;
 const EXIT_UNKOWN_COLOR: i32 = 2;
 const EXIT_INVALID_DELAY: i32 = 3;
 
+macro_rules! log {
+    ($is_verbose:expr, $message:expr) => {
+        if $is_verbose {
+            println!($message);
+        }
+    };
+}
+
 struct Frame {
     delay: time::Duration,
     placements: Vec<ImagePlacement>,
@@ -86,7 +94,7 @@ fn main() {
 
     do_animation(&xcontext, &mut frames, running.clone());
 
-    clean_up(xcontext, &mut frames);
+    clean_up(xcontext, &mut frames, options.clone());
 }
 
 fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
@@ -469,7 +477,7 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
             }
 
             if !update_root_pixmap_atoms(display, root, &pixmap, atom_root, atom_eroot) {
-                println!("set_root_atoms failed!");
+                eprintln!("set_root_atoms failed!");
             }
 
             unsafe {
@@ -485,8 +493,9 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
     delete_atom(&xcontext, atom_eroot);
 }
 
-fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>) {
-    // Clean up
+fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>, options: Arc<Options>) {
+    log!(options.verbose, "Free images in shared memory");
+
     for i in 0..(frames.len()) {
         // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
         unsafe { x11::xshm::XShmDetach(xcontext.display, frames[i].xshminfo.as_mut() as *mut _) };
@@ -494,7 +503,20 @@ fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>) {
     }
 
     unsafe {
+        log!(options.verbose, "Free pixmap used for background");
         XFreePixmap(xcontext.display, xcontext.pixmap);
+
+        log!(
+            options.verbose,
+            "Reset background to solid black and clear window"
+        );
+        XSetWindowBackground(
+            xcontext.display,
+            xcontext.root,
+            x11::xlib::XBlackPixel(xcontext.display, xcontext.screen),
+        );
+        XClearWindow(xcontext.display, xcontext.root);
+
         XCloseDisplay(xcontext.display);
     }
 }
