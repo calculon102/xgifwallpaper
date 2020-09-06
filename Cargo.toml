@@ -19,4 +19,5 @@ ctrlc = "3.1.6"
 gift = "0.9.1"
 libc = "0.2.74"
 pix = "0.13.1"
+resize = "0.5.4"
 x11 = { git = "https://github.com/baist0/x11-rs.git" }

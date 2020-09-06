@@ -31,11 +31,12 @@ use xatoms::*;
 const ARG_COLOR: &str = "COLOR";
 const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
+const ARG_POSITION: &str = "POSITION";
 const ARG_VERBOSE: &str = "VERBOSE";
 
-const EXIT_XSHM_UNSUPPORTED: i32 = 1;
-const EXIT_UNKOWN_COLOR: i32 = 2;
-const EXIT_INVALID_DELAY: i32 = 3;
+const EXIT_XSHM_UNSUPPORTED: i32 = 101;
+const EXIT_UNKOWN_COLOR: i32 = 102;
+const EXIT_INVALID_DELAY: i32 = 103;
 
 macro_rules! log {
     ($is_verbose:expr, $message:expr) => {
@@ -43,6 +44,12 @@ macro_rules! log {
             println!($message);
         }
     };
+}
+
+enum Position {
+    CENTER,
+    FILL,
+    MAX,
 }
 
 struct Frame {
@@ -65,6 +72,7 @@ pub struct Options<'a> {
     background_color: &'a str,
     default_delay: u16,
     path_to_gif: &'a str,
+    position: Position,
     verbose: bool,
 }
 
@@ -97,24 +105,6 @@ fn main() {
     clean_up(xcontext, &mut frames, options.clone());
 }
 
-fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
-    let delay = value_t!(args, ARG_DELAY, u16).unwrap_or_else(|_e| {
-        eprintln!(
-            "Use a value between {} and {} as default-delay.",
-            u16::MIN,
-            u16::MAX
-        );
-        std::process::exit(EXIT_INVALID_DELAY)
-    });
-
-    Arc::new(Options {
-        background_color: args.value_of(ARG_COLOR).unwrap(),
-        default_delay: delay,
-        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        verbose: args.is_present(ARG_VERBOSE),
-    })
-}
-
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("xgifwallpaper")
         .version("0.1.2")
@@ -145,7 +135,42 @@ fn init_args<'a>() -> ArgMatches<'a> {
                 .required(true)
                 .index(1),
         )
+        .arg(
+            Arg::with_name(ARG_POSITION)
+                .short("p")
+                .long("position")
+                .takes_value(true)
+                .possible_values(&["CENTER", "FILL", "MAX"])
+                .default_value("CENTER")
+                .help("Position of image"),
+        )
         .get_matches()
+}
+
+fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
+    let delay = value_t!(args, ARG_DELAY, u16).unwrap_or_else(|_e| {
+        eprintln!(
+            "Use a value between {} and {} as default-delay.",
+            u16::MIN,
+            u16::MAX
+        );
+        std::process::exit(EXIT_INVALID_DELAY)
+    });
+
+    let position = match args.value_of(ARG_POSITION).unwrap() {
+        "CENTER" => Position::CENTER,
+        "FILL" => Position::FILL,
+        "MAX" => Position::MAX,
+        &_ => Position::CENTER, // Cannot happen to guarantee of args
+    };
+
+    Arc::new(Options {
+        background_color: args.value_of(ARG_COLOR).unwrap(),
+        default_delay: delay,
+        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
+        position: position,
+        verbose: args.is_present(ARG_VERBOSE),
+    })
 }
 
 fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
