@@ -40,6 +40,12 @@ macro_rules! log {
             println!($message);
         }
     };
+
+    ($is_verbose:ident, $message:expr, $($args:expr),*) => {
+        if $is_verbose.verbose {
+            println!($message $(,$args)*);
+        }
+    };
 }
 
 enum Position {
@@ -289,16 +295,15 @@ fn prepare_frames(
         // TODO Set width/height according to screen and options
         // TODO Resize raster
 
-        if options.verbose {
-            println!(
-                "Convert step {} to XImage, delay: {:?}, width: {}, height: {}, method: {:?}",
-                frame_index,
-                step.delay_time_cs(),
-                width,
-                height,
-                methods[frame_index]
-            );
-        }
+        log!(
+            options,
+            "Convert step {} to XImage, delay: {:?}, width: {}, height: {}, method: {:?}",
+            frame_index,
+            step.delay_time_cs(),
+            width,
+            height,
+            methods[frame_index]
+        );
 
         // Create shared memory segment and image structure
         let xscreen = unsafe { XDefaultScreenOfDisplay(xdisplay) };
