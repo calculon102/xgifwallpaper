@@ -24,10 +24,6 @@ use screen_info::*;
 use shm::*;
 use xatoms::*;
 
-// TODO v0.2: Refactor frame-preparation and animation-loop out of prototyping-state
-// TODO v0.2: placement as argument
-// TODO v0.3: Multi-root handling
-
 const ARG_COLOR: &str = "COLOR";
 const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
@@ -39,8 +35,8 @@ const EXIT_UNKOWN_COLOR: i32 = 102;
 const EXIT_INVALID_DELAY: i32 = 103;
 
 macro_rules! log {
-    ($is_verbose:expr, $message:expr) => {
-        if $is_verbose {
+    ($is_verbose:ident, $message:expr) => {
+        if $is_verbose.verbose {
             println!($message);
         }
     };
@@ -275,6 +271,9 @@ fn prepare_frames(
     let mut out: Vec<Frame> = Vec::new();
     let mut frame_index = 0;
 
+    // TODO Get screeninfo
+    // TODO Gather different resolutions as strings
+
     for step_option in steps {
         if !running.load(Ordering::SeqCst) {
             break;
@@ -285,6 +284,10 @@ fn prepare_frames(
 
         let width = raster.width();
         let height = raster.height();
+
+        // TODO Iterate over resolutions
+        // TODO Set width/height according to screen and options
+        // TODO Resize raster
 
         if options.verbose {
             println!(
@@ -373,6 +376,8 @@ fn prepare_frames(
             }
             i += s;
         }
+
+        // TODO Put data in hashmap with resolution as key
 
         // Copy raw data into shared memory segment of XImage
         let data_ptr: Rc<Vec<i8>> = Rc::new(data);
@@ -519,7 +524,7 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
 }
 
 fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>, options: Arc<Options>) {
-    log!(options.verbose, "Free images in shared memory");
+    log!(options, "Free images in shared memory");
 
     for i in 0..(frames.len()) {
         // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
@@ -528,13 +533,10 @@ fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>, options: Arc<Optio
     }
 
     unsafe {
-        log!(options.verbose, "Free pixmap used for background");
+        log!(options, "Free pixmap used for background");
         XFreePixmap(xcontext.display, xcontext.pixmap);
 
-        log!(
-            options.verbose,
-            "Reset background to solid black and clear window"
-        );
+        log!(options, "Reset background to solid black and clear window");
         XSetWindowBackground(
             xcontext.display,
             xcontext.root,
