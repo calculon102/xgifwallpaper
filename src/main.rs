@@ -1,4 +1,4 @@
-mod placement;
+mod position;
 mod screen_info;
 mod shm;
 mod xatoms;
@@ -7,6 +7,7 @@ use clap::{value_t, App, Arg, ArgMatches};
 
 use pix::rgb::Rgba8;
 
+use std::collections::HashMap;
 use std::ffi::{c_void, CString};
 use std::fs::File;
 use std::io::BufReader;
@@ -19,7 +20,7 @@ use std::{thread, time};
 
 use x11::xlib::*;
 
-use placement::*;
+use position::*;
 use screen_info::*;
 use shm::*;
 use xatoms::*;
@@ -48,34 +49,44 @@ macro_rules! log {
     };
 }
 
-enum Position {
-    CENTER,
-    FILL,
-    MAX,
+/// Screens to render wallpapers on, with needed resolution. And the pre-
+/// rendered frames in a seperate map.
+struct Wallpapers {
+    screens: Vec<WallpaperOnScreen>,
+    frames_by_resolution: HashMap<Resolution, Vec<Frame>>,
 }
 
+/// Resolution and placement of a wallpaper on a screen.
+struct WallpaperOnScreen {
+    placement: ImagePlacement,
+    resolution: Resolution,
+    _screen: screen_info::Screen, // TODO Check if useful at some time
+}
+
+/// Combines x-structs, raster- and metadata for a singe frame.
 struct Frame {
     delay: time::Duration,
-    placements: Vec<ImagePlacement>,
     raster: Rc<Vec<c_char>>,
     ximage: Box<XImage>,
     xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
-pub struct XContext {
-    display: *mut x11::xlib::Display,
-    screen: c_int,
-    root: c_ulong,
-    gc: GC,
-    pixmap: Pixmap,
-}
-
+/// Runtime options as given by the caller of this program.
 pub struct Options<'a> {
     background_color: &'a str,
     default_delay: u16,
     path_to_gif: &'a str,
     position: Position,
     verbose: bool,
+}
+
+/// X11-specific control-data and references.
+pub struct XContext {
+    display: *mut x11::xlib::Display,
+    screen: c_int,
+    root: c_ulong,
+    gc: GC,
+    pixmap: Pixmap,
 }
 
 fn main() {
@@ -96,15 +107,15 @@ fn main() {
 
     let color = parse_color(&xcontext, options.background_color);
 
-    let mut frames = prepare_frames(xcontext.display, &color, options.clone(), running.clone());
+    let mut wallpapers = render_wallpapers(&xcontext, &color, options.clone(), running.clone());
 
     xcontext.pixmap = prepare_pixmap(&xcontext, &color);
 
     clear_background(&xcontext, options.clone());
 
-    do_animation(&xcontext, &mut frames, running.clone());
+    do_animation(&xcontext, &mut wallpapers, options.clone(), running.clone());
 
-    clean_up(xcontext, &mut frames, options.clone());
+    clean_up(xcontext, wallpapers, options.clone());
 }
 
 fn init_args<'a>() -> ArgMatches<'a> {
@@ -170,7 +181,7 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
         background_color: args.value_of(ARG_COLOR).unwrap(),
         default_delay: delay,
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        position: position,
+        position,
         verbose: args.is_present(ARG_VERBOSE),
     })
 }
@@ -195,10 +206,10 @@ fn create_xcontext() -> Box<XContext> {
     let root = unsafe { XRootWindow(display, screen) };
 
     Box::new(XContext {
-        display: display,
-        screen: screen,
-        gc: gc,
-        root: root,
+        display,
+        screen,
+        gc,
+        root,
         pixmap: 0,
     })
 }
@@ -263,24 +274,137 @@ fn prepare_pixmap(xcontext: &Box<XContext>, color: &Box<XColor>) -> Pixmap {
     }
 }
 
-fn prepare_frames(
-    xdisplay: *mut Display,
+/// Pre-render wallpaper-frames for all needed resolutions, determined by
+/// actual screens, options and image-data
+fn render_wallpapers(
+    xcontext: &Box<XContext>,
+    background_color: &Box<XColor>,
+    options: Arc<Options>,
+    running: Arc<AtomicBool>,
+) -> Wallpapers {
+    // Decode gif-frames into raster-steps
+    // TODO Try using only low-level frames
+    // TODO Prevent double-encoding, by re-using iterator?
+    let mut steps = create_decoder(options.path_to_gif).into_steps();
+    let methods = gather_disposal_methods(options.path_to_gif);
+
+    // Determine image-resolution
+    let first_step = create_decoder(options.path_to_gif)
+        .into_steps()
+        .nth(0)
+        .unwrap()
+        .unwrap();
+    let raster = first_step.raster();
+    let image_resolution = Resolution {
+        width: raster.width() as i32,
+        height: raster.height() as i32,
+    };
+
+    // Build wallpapers by screen
+    let screen_info = get_screen_info();
+
+    let mut screens: Vec<WallpaperOnScreen> = Vec::new();
+    let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
+
+    for screen in screen_info.screens {
+        log!(options, "Prepare wallpaper for screen {:?}", screen);
+
+        // Gather target-resolution and image-placement for particular screen
+        let screen_resolution = Resolution {
+            width: screen.width,
+            height: screen.height,
+        };
+
+        let target_resolution =
+            compute_target_resolution(&image_resolution, &screen_resolution, &options.position);
+
+        let placement =
+            get_image_placement(&target_resolution, &screen, ImagePlacementStrategy::CENTER);
+
+        log!(options, "placement: {:?}", placement);
+
+        let wallpaper_on_screen = WallpaperOnScreen {
+            placement: get_image_placement(
+                &target_resolution,
+                &screen,
+                ImagePlacementStrategy::CENTER,
+            ),
+            resolution: target_resolution.clone(),
+            _screen: screen.clone(),
+        };
+
+        // If frames were not already rendered for given resolution, do so
+        if !frames_by_resolution.contains_key(&target_resolution) {
+            frames_by_resolution.insert(
+                target_resolution,
+                render_frames(
+                    xcontext,
+                    background_color,
+                    &wallpaper_on_screen,
+                    steps.by_ref(),
+                    &methods,
+                    options.clone(),
+                    running.clone(),
+                ),
+            );
+        } else {
+            log!(
+                options,
+                "Reuse already rendered frames for {:?}",
+                target_resolution
+            );
+        }
+
+        screens.push(wallpaper_on_screen);
+    }
+
+    Wallpapers {
+        screens,
+        frames_by_resolution,
+    }
+}
+
+fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
+    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
+}
+
+fn gather_disposal_methods(filename: &str) -> Vec<gift::block::DisposalMethod> {
+    let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
+    let frames = create_decoder(filename).into_frames();
+    for frame in frames {
+        if frame.is_ok() {
+            let f = frame.unwrap();
+
+            if f.graphic_control_ext.is_some() {
+                methods.push(f.graphic_control_ext.unwrap().disposal_method());
+            }
+
+            continue;
+        }
+
+        methods.push(gift::block::DisposalMethod::NoAction);
+    }
+
+    methods
+}
+
+fn render_frames(
+    xcontext: &Box<XContext>,
     color: &Box<XColor>,
+    wallpaper_on_screen: &WallpaperOnScreen,
+    steps: &mut gift::decode::Steps<BufReader<File>>,
+    methods: &Vec<gift::block::DisposalMethod>,
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Vec<Frame> {
-    // Decode gif-frames into raster-steps
-    // TODO Try using only low-level frames
-    let steps = create_decoder(options.path_to_gif).into_steps();
-    let methods = gather_disposal_methods(options.path_to_gif);
-
     let mut out: Vec<Frame> = Vec::new();
     let mut frame_index = 0;
 
-    // TODO Get screeninfo
-    // TODO Gather different resolutions as strings
+    let xscreen = unsafe { XDefaultScreenOfDisplay(xcontext.display) };
+    let xvisual = unsafe { XDefaultVisualOfScreen(xscreen) };
 
-    for step_option in steps {
+    // Convert rasters to frames
+    for step_option in steps.by_ref() {
         if !running.load(Ordering::SeqCst) {
             break;
         }
@@ -288,31 +412,44 @@ fn prepare_frames(
         let step = step_option.expect("Empty step in animation");
         let raster = step.raster();
 
-        let width = raster.width();
-        let height = raster.height();
+        let image_resolution = Resolution {
+            width: raster.width() as i32,
+            height: raster.height() as i32,
+        };
 
-        // TODO Iterate over resolutions
-        // TODO Set width/height according to screen and options
-        // TODO Resize raster
+        let target_resolution = wallpaper_on_screen.resolution.clone();
 
         log!(
             options,
-            "Convert step {} to XImage, delay: {:?}, width: {}, height: {}, method: {:?}",
+            "Convert step {} (delay: {:?}, method: {:?}, width: {}, height: {}) to XImage (width: {}, height: {})",
             frame_index,
             step.delay_time_cs(),
-            width,
-            height,
-            methods[frame_index]
+            methods[frame_index],
+            image_resolution.width,
+            image_resolution.height,
+            target_resolution.width,
+            target_resolution.height
         );
 
-        // Create shared memory segment and image structure
-        let xscreen = unsafe { XDefaultScreenOfDisplay(xdisplay) };
-        let xvisual = unsafe { XDefaultVisualOfScreen(xscreen) };
+        // Build target raster
+        // TODO Better naming of vectors
+        let step_data = resize_raster(&raster, &target_resolution, options.clone());
 
-        let image_byte_size = (width * height * 4) as usize;
+        let mut data: Vec<i8> =
+            Vec::with_capacity((target_resolution.width * target_resolution.height * 4) as usize);
+
+        // Create shared memory segment and image structure
+        let image_byte_size = (target_resolution.width * target_resolution.height * 4) as usize;
         let mut xshminfo = create_xshm_sgmnt_inf(image_byte_size).unwrap();
-        let ximage =
-            create_xshm_image(xdisplay, xvisual, &mut xshminfo, width, height, 24).unwrap();
+        let ximage = create_xshm_image(
+            xcontext.display,
+            xvisual,
+            &mut xshminfo,
+            target_resolution.width as u32,
+            target_resolution.height as u32,
+            24,
+        )
+        .unwrap();
 
         let is_rgb = unsafe { (*ximage).byte_order == x11::xlib::MSBFirst };
         let rgba_indices = if is_rgb {
@@ -320,10 +457,6 @@ fn prepare_frames(
         } else {
             [2, 1, 0, 3] // BGRA
         };
-
-        // Write frame image into owned byte-vector
-        let i8_slice = unsafe { &*(raster.as_u8_slice() as *const [u8] as *const [i8]) };
-        let mut data: Vec<i8> = Vec::with_capacity((width * height * 4) as usize);
 
         let s = 4;
 
@@ -359,15 +492,17 @@ fn prepare_frames(
             }
         };
 
+        let u8_slice = step_data.as_slice();
         let mut i = 0;
-        while i < i8_slice.len() {
-            let alpha = i8_slice[i + 3] as u8;
+
+        while i < u8_slice.len() {
+            let alpha = u8_slice[i + 3];
 
             if alpha == 255 {
-                data.push(i8_slice[i + rgba_indices[0]]);
-                data.push(i8_slice[i + rgba_indices[1]]);
-                data.push(i8_slice[i + rgba_indices[2]]);
-                data.push(i8_slice[i + rgba_indices[3]]);
+                data.push(u8_slice[i + rgba_indices[0]] as i8);
+                data.push(u8_slice[i + rgba_indices[1]] as i8);
+                data.push(u8_slice[i + rgba_indices[2]] as i8);
+                data.push(u8_slice[i + rgba_indices[3]] as i8);
             } else if methods[frame_index] == gift::block::DisposalMethod::Keep {
                 data.push(prev_raster[i + 0]);
                 data.push(prev_raster[i + 1]);
@@ -382,8 +517,6 @@ fn prepare_frames(
             i += s;
         }
 
-        // TODO Put data in hashmap with resolution as key
-
         // Copy raw data into shared memory segment of XImage
         let data_ptr: Rc<Vec<i8>> = Rc::new(data);
         unsafe {
@@ -393,7 +526,7 @@ fn prepare_frames(
                 image_byte_size,
             );
             (*ximage).data = xshminfo.shmaddr;
-            x11::xshm::XShmAttach(xdisplay, xshminfo.as_mut() as *mut _);
+            x11::xshm::XShmAttach(xcontext.display, xshminfo.as_mut() as *mut _);
         };
 
         let data_size = unsafe { ((*ximage).bytes_per_line * (*ximage).height) as usize };
@@ -413,58 +546,57 @@ fn prepare_frames(
 
         out.push(Frame {
             delay: time::Duration::from_millis((delay * 10) as u64),
-            placements: Vec::new(),
             raster: data_ptr,
             ximage: unsafe { Box::new(*ximage) },
-            xshminfo: xshminfo,
+            xshminfo,
         });
 
         frame_index = frame_index + 1;
     }
 
-    add_placements(&mut out);
-
     return out;
 }
 
-fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
-    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
-}
+fn resize_raster(
+    raster: &pix::Raster<pix::rgb::SRgba8>,
+    target_resolution: &Resolution,
+    options: Arc<Options>,
+) -> Vec<u8> {
+    let src_w = raster.width() as usize;
+    let src_h = raster.height() as usize;
+    let dst_w = target_resolution.width as usize;
+    let dst_h = target_resolution.height as usize;
 
-fn gather_disposal_methods(filename: &str) -> Vec<gift::block::DisposalMethod> {
-    let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
-    let frames = create_decoder(filename).into_frames();
-    for frame in frames {
-        if frame.is_ok() {
-            let f = frame.unwrap();
+    let must_resize = src_w != dst_w || src_h != dst_h;
 
-            if f.graphic_control_ext.is_some() {
-                methods.push(f.graphic_control_ext.unwrap().disposal_method());
-            }
+    if must_resize {
+        let resize_type = if (src_w * src_h) > (dst_w * dst_h) {
+            resize::Type::Lanczos3
+        } else {
+            resize::Type::Mitchell
+        };
 
-            continue;
-        }
+        log!(
+            options,
+            "Resize raster from {}x{} to {}x{}",
+            src_w,
+            src_h,
+            dst_w,
+            dst_h
+        );
 
-        methods.push(gift::block::DisposalMethod::NoAction);
-    }
+        let sample_size = dst_w * dst_h * 4;
 
-    methods
-}
+        let mut dst: Vec<u8> = Vec::with_capacity(sample_size);
+        dst.resize(sample_size, 0);
 
-fn add_placements(frames: &mut Vec<Frame>) {
-    let screen_info = get_screen_info();
-    for i in 0..(frames.len()) {
-        let image_width = frames[i].ximage.width;
-        let image_height = frames[i].ximage.height;
+        let mut resizer = resize::new(src_w, src_h, dst_w, dst_h, resize::Pixel::RGBA, resize_type);
 
-        for screen in &screen_info.screens {
-            frames[i].placements.push(get_image_placement(
-                image_width,
-                image_height,
-                screen.clone(),
-                ImagePlacementStrategy::CENTER,
-            ));
-        }
+        resizer.resize(raster.as_u8_slice().to_vec().as_ref(), &mut dst);
+
+        dst
+    } else {
+        raster.as_u8_slice().to_vec()
     }
 }
 
@@ -478,7 +610,14 @@ fn clear_background(xcontext: &Box<XContext>, options: Arc<Options>) {
     }
 }
 
-fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<AtomicBool>) {
+fn do_animation(
+    xcontext: &Box<XContext>,
+    wallpapers: &mut Wallpapers,
+    options: Arc<Options>,
+    running: Arc<AtomicBool>,
+) {
+    log!(options, "Loop animation...");
+
     let display = xcontext.display;
     let pixmap = xcontext.pixmap;
     let gc = xcontext.gc;
@@ -487,54 +626,82 @@ fn do_animation(xcontext: &Box<XContext>, frames: &mut Vec<Frame>, running: Arc<
     let atom_root = get_root_pixmap_atom(display);
     let atom_eroot = get_eroot_pixmap_atom(display);
 
+    let mut i: usize = 0;
+    let mut delay: std::time::Duration = std::time::Duration::new(0, 0);
+
     while running.load(Ordering::SeqCst) {
-        for i in 0..(frames.len()) {
-            if !running.load(Ordering::SeqCst) {
-                break;
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
+        for screen in &wallpapers.screens {
+            let frames = wallpapers
+                .frames_by_resolution
+                .get_mut(&screen.resolution)
+                .unwrap();
+
+            // The following assumptions only work, while there is a single GIF
+            // to render. Different GIFs per screen would require a rewrite.
+
+            // Assumption: All framesets have same length
+            if frames.len() <= i {
+                i = 0;
             }
 
-            for j in 0..(frames[i].placements.len()) {
-                unsafe {
-                    x11::xshm::XShmPutImage(
-                        display,
-                        pixmap,
-                        gc,
-                        frames[i].ximage.as_mut() as *mut _,
-                        frames[i].placements[j].src_x,
-                        frames[i].placements[j].src_y,
-                        frames[i].placements[j].dest_x,
-                        frames[i].placements[j].dest_y,
-                        frames[i].placements[j].width as c_uint,
-                        frames[i].placements[j].height as c_uint,
-                        False,
-                    );
-                }
-            }
+            // Assumption: All frames with same index have same delay
+            delay = frames[i].delay;
 
-            if !update_root_pixmap_atoms(display, root, &pixmap, atom_root, atom_eroot) {
-                eprintln!("set_root_atoms failed!");
-            }
+            //log!(options, "Put frame {} on screen {:?}", i, screen.placement);
 
             unsafe {
-                XClearWindow(display, root);
-                XSetWindowBackgroundPixmap(display, root, pixmap);
-                XSync(display, False);
+                x11::xshm::XShmPutImage(
+                    display,
+                    pixmap,
+                    gc,
+                    &mut *frames[i].ximage,
+                    screen.placement.src_x,
+                    screen.placement.src_y,
+                    screen.placement.dest_x,
+                    screen.placement.dest_y,
+                    screen.placement.width as c_uint,
+                    screen.placement.height as c_uint,
+                    False,
+                );
             }
-            thread::sleep(frames[i].delay);
         }
+
+        i = i + 1;
+
+        if !update_root_pixmap_atoms(display, root, &pixmap, atom_root, atom_eroot) {
+            eprintln!("set_root_atoms failed!");
+        }
+
+        unsafe {
+            XClearWindow(display, root);
+            XSetWindowBackgroundPixmap(display, root, pixmap);
+            XSync(display, False);
+        }
+
+        thread::sleep(delay);
     }
+
+    log!(options, "Stop animation-loop");
 
     delete_atom(&xcontext, atom_root);
     delete_atom(&xcontext, atom_eroot);
 }
 
-fn clean_up(xcontext: Box<XContext>, frames: &mut Vec<Frame>, options: Arc<Options>) {
+fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Options>) {
     log!(options, "Free images in shared memory");
 
-    for i in 0..(frames.len()) {
-        // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
-        unsafe { x11::xshm::XShmDetach(xcontext.display, frames[i].xshminfo.as_mut() as *mut _) };
-        destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
+    for frames in wallpapers.frames_by_resolution.values_mut() {
+        for i in 0..(frames.len()) {
+            // Don't need to call XDestroy image - heap is freed by rust-guarantees. :)
+            unsafe {
+                x11::xshm::XShmDetach(xcontext.display, frames[i].xshminfo.as_mut() as *mut _)
+            };
+            destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
+        }
     }
 
     unsafe {
