@@ -30,21 +30,21 @@ pub struct ImagePlacement {
     /// y-origin of the screen to use.
     pub dest_y: i32,
     /// width of the image to render, relative to src_x.
-    pub width: i32,
+    pub width: u32,
     /// height of the image to render, relative to src_y.
-    pub height: i32,
+    pub height: u32,
 }
 
 /// Width and height as one unit.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Debug)]
 pub struct Resolution {
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Resolution {
     /// Creates a new instance of `Resolution`.
-    pub fn new(width: i32, height: i32) -> Resolution {
+    pub fn new(width: u32, height: u32) -> Resolution {
         Resolution { width, height }
     }
 }
@@ -95,12 +95,12 @@ fn compute_scaled_resolution(
             result.width = screen_resolution.width;
 
             let scale = screen_resolution.width as f32 / image_resolution.width as f32;
-            result.height = (image_resolution.height as f32 * scale) as i32;
+            result.height = (image_resolution.height as f32 * scale) as u32;
         } else {
             result.height = screen_resolution.height;
 
             let scale = screen_resolution.height as f32 / image_resolution.height as f32;
-            result.width = (image_resolution.width as f32 * scale) as i32;
+            result.width = (image_resolution.width as f32 * scale) as u32;
         }
     }
 
@@ -121,7 +121,7 @@ pub fn get_image_placement(
 // TODO Test
 /// Places an image on screen, aligned to the center. Both horizontally and
 /// vertically.
-fn center_image(width: i32, height: i32, screen: &Screen) -> ImagePlacement {
+fn center_image(width: u32, height: u32, screen: &Screen) -> ImagePlacement {
     let mut out = ImagePlacement {
         src_x: 0,
         src_y: 0,
@@ -132,21 +132,21 @@ fn center_image(width: i32, height: i32, screen: &Screen) -> ImagePlacement {
     };
 
     if width > screen.width {
-        out.src_x = (width - screen.width) / 2;
+        out.src_x = ((width - screen.width) / 2) as i32;
         out.width = screen.width;
     }
 
     if height > screen.height {
-        out.src_y = (height - screen.height) / 2;
+        out.src_y = ((height - screen.height) / 2) as i32;
         out.height = screen.height;
     }
 
     if screen.width > width {
-        out.dest_x = screen.x_org + ((screen.width - width) / 2);
+        out.dest_x = screen.x_org + ((screen.width - width) / 2) as i32;
     }
 
     if screen.height > height {
-        out.dest_y = screen.y_org + ((screen.height - height) / 2);
+        out.dest_y = screen.y_org + ((screen.height - height) / 2) as i32;
     }
 
     return out;

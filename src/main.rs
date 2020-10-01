@@ -296,8 +296,8 @@ fn render_wallpapers(
         .unwrap();
     let raster = first_step.raster();
     let image_resolution = Resolution {
-        width: raster.width() as i32,
-        height: raster.height() as i32,
+        width: raster.width(),
+        height: raster.height(),
     };
 
     // Build wallpapers by screen
@@ -408,8 +408,8 @@ fn render_frames(
         let raster = step.raster();
 
         let image_resolution = Resolution {
-            width: raster.width() as i32,
-            height: raster.height() as i32,
+            width: raster.width(),
+            height: raster.height(),
         };
 
         let target_resolution = wallpaper_on_screen.resolution.clone();

@@ -24,8 +24,8 @@ pub struct Screen {
     pub screen_number: i32,
     pub x_org: i32,
     pub y_org: i32,
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub fn get_screen_info() -> ScreenInfo {
@@ -44,8 +44,8 @@ pub fn get_screen_info() -> ScreenInfo {
                     screen_number: (*xscreens.offset(i as isize)).screen_number,
                     x_org: (*xscreens.offset(i as isize)).x_org as i32,
                     y_org: (*xscreens.offset(i as isize)).y_org as i32,
-                    width: (*xscreens.offset(i as isize)).width as i32,
-                    height: (*xscreens.offset(i as isize)).height as i32,
+                    width: (*xscreens.offset(i as isize)).width as u32,
+                    height: (*xscreens.offset(i as isize)).height as u32,
                 });
             }
         } else {
@@ -58,8 +58,8 @@ pub fn get_screen_info() -> ScreenInfo {
                     screen_number: i,
                     x_org: 0,
                     y_org: 0,
-                    width: xlib::XDisplayWidth(display, i),
-                    height: xlib::XDisplayHeight(display, i),
+                    width: xlib::XDisplayWidth(display, i) as u32,
+                    height: xlib::XDisplayHeight(display, i) as u32,
                 });
             }
         }
@@ -68,8 +68,8 @@ pub fn get_screen_info() -> ScreenInfo {
     }
 
     return ScreenInfo {
-        root_per_screen: root_per_screen,
-        screens: screens,
+        root_per_screen,
+        screens,
     };
 }
 
