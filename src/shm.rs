@@ -1,8 +1,7 @@
-//! This module encapsules handling with the xshm-extenstion of the X-server.
+//! Encapsule handling with the xshm-extension of the X-server.
 //!
-//! Main-purpose is to use shared memory between client and server for the
-//! frames of the rendered GIF. This enabled a massive performance-boost,
-//! compared to fast and frequent client-server-transmission of huge bitamps.
+//! The shared memory is used to avoid expensive transfer of frame-images
+//! between client and server. Thus bringing a significant performance-boost.
 
 use std::mem;
 use std::os::raw::{c_char, c_int};
@@ -11,6 +10,7 @@ use std::ptr::{null, null_mut};
 use x11::xlib::*;
 use x11::xshm;
 
+/// Returns `true` if X-Server supports xshm.
 pub fn is_xshm_available() -> bool {
     let display = unsafe { XOpenDisplay(null()) };
 
@@ -21,6 +21,8 @@ pub fn is_xshm_available() -> bool {
     status == True
 }
 
+/// Creates info-structure for the shared-memory-segment. This structure must
+/// exist as long as the segment and data itself.
 pub fn create_xshm_sgmnt_inf(size: usize) -> Result<Box<xshm::XShmSegmentInfo>, u8> {
     use libc::size_t;
     let shmid: c_int =
@@ -43,10 +45,13 @@ pub fn create_xshm_sgmnt_inf(size: usize) -> Result<Box<xshm::XShmSegmentInfo>, 
     }))
 }
 
+/// Destroys the given info-structure and frees its memory.
 pub fn destroy_xshm_sgmnt_inf(seginf: &mut Box<xshm::XShmSegmentInfo>) {
     unsafe { libc::shmdt(seginf.shmaddr as *mut libc::c_void) };
 }
 
+/// Creates a new `XImage`-instance, representing the data of the shared memory
+/// segment.
 pub fn create_xshm_image(
     dspl: *mut Display,
     vsl: *mut Visual,

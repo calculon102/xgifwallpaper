@@ -1,22 +1,20 @@
-/// Compute position and resolution of images according to screen-resolutions
-/// and options for placement and scaling.
+//! Compute position and resolution of images according to screen-resolutions
+//! and options for placement and scaling.
 use crate::screen_info::*;
 
 /// Determines how an image is to be aligned, relative to a screen.
-/// TODO Rename to ImageAlignment.
 pub enum Alignment {
     CENTER,
 }
 
 /// Scaling-options. All options respect aspect-ratio.
-/// TODO Rename to ImageScaling
 #[derive(Debug, PartialEq, Eq)]
 pub enum Scaling {
     /// Don't scale
     NONE,
     /// Image should fill the whole screen, even if cut off.
     FILL,
-    /// Image should be as big as possible, without losing content.
+    /// Image should be as large as possible, without losing content.
     MAX,
 }
 
@@ -45,24 +43,31 @@ pub struct Resolution {
 }
 
 impl Resolution {
+    /// Creates a new instance of `Resolution`.
     pub fn new(width: i32, height: i32) -> Resolution {
         Resolution { width, height }
     }
 }
 
-/// Calculates the resolution an image should have to respect given position/scale.
+/// Calculates the resolution an image should have to respect given scaling.
 pub fn compute_target_resolution(
     image_resolution: &Resolution,
     screen_resolution: &Resolution,
-    target_position: &Scaling,
+    scaling: &Scaling,
 ) -> Resolution {
-    match *target_position {
+    match *scaling {
         Scaling::NONE => image_resolution.clone(),
         Scaling::FILL => compute_scaled_resolution(image_resolution, screen_resolution, true),
         Scaling::MAX => compute_scaled_resolution(image_resolution, screen_resolution, false),
     }
 }
 
+/// Calculates the resolution an image should have to respect given scaling.
+///
+/// If `fill` is `true` the whole screen is used, at cost of image-information.
+///
+/// If `fill` is `false` the image is scaled as large as possible, without
+/// losing information.
 fn compute_scaled_resolution(
     image_resolution: &Resolution,
     screen_resolution: &Resolution,
@@ -114,6 +119,8 @@ pub fn get_image_placement(
 }
 
 // TODO Test
+/// Places an image on screen, aligned to the center. Both horizontally and
+/// vertically.
 fn center_image(width: i32, height: i32, screen: &Screen) -> ImagePlacement {
     let mut out = ImagePlacement {
         src_x: 0,
