@@ -58,60 +58,35 @@ pub fn compute_target_resolution(
 ) -> Resolution {
     match *target_position {
         Position::CENTER => image_resolution.clone(),
-        Position::FILL => compute_fill_resolution(image_resolution, screen_resolution),
-        Position::MAX => compute_max_resolution(image_resolution, screen_resolution),
+        Position::FILL => compute_scaled_resolution(image_resolution, screen_resolution, true),
+        Position::MAX => compute_scaled_resolution(image_resolution, screen_resolution, false),
     }
 }
 
-fn compute_fill_resolution(
+fn compute_scaled_resolution(
     image_resolution: &Resolution,
     screen_resolution: &Resolution,
+    fill: bool,
 ) -> Resolution {
     let mut result = Resolution::new(0, 0);
 
     let d_width = screen_resolution.width - image_resolution.width;
     let d_height = screen_resolution.height - image_resolution.height;
 
-    let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
-    let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
-
     if d_width == 0 && d_height == 0 {
         result.width = screen_resolution.width;
         result.height = screen_resolution.height;
     } else {
-        if screen_ratio > image_ratio {
-            result.width = screen_resolution.width;
+        let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
+        let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
 
-            let scale = screen_resolution.width as f32 / image_resolution.width as f32;
-            result.height = (image_resolution.height as f32 * scale) as i32;
+        let scale_to_width = if fill {
+            screen_ratio > image_ratio
         } else {
-            result.height = screen_resolution.height;
+            screen_ratio < image_ratio
+        };
 
-            let scale = screen_resolution.height as f32 / image_resolution.height as f32;
-            result.width = (image_resolution.width as f32 * scale) as i32;
-        }
-    }
-
-    result
-}
-
-fn compute_max_resolution(
-    image_resolution: &Resolution,
-    screen_resolution: &Resolution,
-) -> Resolution {
-    let mut result = Resolution::new(0, 0);
-
-    let d_width = screen_resolution.width - image_resolution.width;
-    let d_height = screen_resolution.height - image_resolution.height;
-
-    let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
-    let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
-
-    if d_width == 0 && d_height == 0 {
-        result.width = screen_resolution.width;
-        result.height = screen_resolution.height;
-    } else {
-        if screen_ratio < image_ratio {
+        if scale_to_width {
             result.width = screen_resolution.width;
 
             let scale = screen_resolution.width as f32 / image_resolution.width as f32;
