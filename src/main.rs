@@ -120,7 +120,7 @@ fn main() {
 
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("xgifwallpaper")
-        .version("0.1.2")
+        .version("0.2.0")
         .author("Frank Großgasteiger <frank@grossgasteiger.de>")
         .about("Animates a GIF as wallpaper in your X-session")
         .arg(
