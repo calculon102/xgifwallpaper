@@ -15,11 +15,17 @@ function run_debug {
 BACKGROUND="white"
 FILE="sample-1x1.gif"
 POSITION="FILL"
-SLEEP_TIME="5s"
+SLEEP_TIME="3s"
 VERBOSE=""
 
 cargo build --release
 
+run_debug $BACKGROUND $POSITION "sample-1x1.gif"
+run_debug $BACKGROUND $POSITION "sample-2x1.gif"
+run_debug $BACKGROUND $POSITION "sample-1x2.gif"
+run_debug $BACKGROUND $POSITION "sample-1x1-one-frame.gif"
+
+POSITION="MAX"
 run_debug $BACKGROUND $POSITION "sample-1x1.gif"
 run_debug $BACKGROUND $POSITION "sample-2x1.gif"
 run_debug $BACKGROUND $POSITION "sample-1x2.gif"
