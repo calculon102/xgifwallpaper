@@ -4,16 +4,16 @@ use crate::screen_info::*;
 
 /// Determines how an image is to be aligned, relative to a screen.
 /// TODO Rename to ImageAlignment.
-pub enum ImagePlacementStrategy {
+pub enum Alignment {
     CENTER,
 }
 
 /// Scaling-options. All options respect aspect-ratio.
 /// TODO Rename to ImageScaling
 #[derive(Debug, PartialEq, Eq)]
-pub enum Position {
+pub enum Scaling {
     /// Don't scale
-    CENTER,
+    NONE,
     /// Image should fill the whole screen, even if cut off.
     FILL,
     /// Image should be as big as possible, without losing content.
@@ -54,12 +54,12 @@ impl Resolution {
 pub fn compute_target_resolution(
     image_resolution: &Resolution,
     screen_resolution: &Resolution,
-    target_position: &Position,
+    target_position: &Scaling,
 ) -> Resolution {
     match *target_position {
-        Position::CENTER => image_resolution.clone(),
-        Position::FILL => compute_scaled_resolution(image_resolution, screen_resolution, true),
-        Position::MAX => compute_scaled_resolution(image_resolution, screen_resolution, false),
+        Scaling::NONE => image_resolution.clone(),
+        Scaling::FILL => compute_scaled_resolution(image_resolution, screen_resolution, true),
+        Scaling::MAX => compute_scaled_resolution(image_resolution, screen_resolution, false),
     }
 }
 
@@ -106,12 +106,10 @@ fn compute_scaled_resolution(
 pub fn get_image_placement(
     image_resolution: &Resolution,
     screen: &Screen,
-    strategy: ImagePlacementStrategy,
+    strategy: Alignment,
 ) -> ImagePlacement {
     match strategy {
-        ImagePlacementStrategy::CENTER => {
-            center_image(image_resolution.width, image_resolution.height, screen)
-        }
+        Alignment::CENTER => center_image(image_resolution.width, image_resolution.height, screen),
     }
 }
 
@@ -164,7 +162,7 @@ mod tests {
         let actual = compute_target_resolution(
             &image_resolution,
             &Resolution::new(1080, 1920),
-            &Position::CENTER,
+            &Scaling::NONE,
         );
 
         assert_eq!(true, actual == image_resolution);
@@ -315,20 +313,20 @@ mod tests {
     }
 
     fn _test_compute_fill_resolution(image: Resolution, screen: Resolution, expected: Resolution) {
-        _test_compute_resolution(image, screen, Position::FILL, expected);
+        _test_compute_resolution(image, screen, Scaling::FILL, expected);
     }
 
     fn _test_compute_max_resolution(image: Resolution, screen: Resolution, expected: Resolution) {
-        _test_compute_resolution(image, screen, Position::MAX, expected);
+        _test_compute_resolution(image, screen, Scaling::MAX, expected);
     }
 
     fn _test_compute_resolution(
         image: Resolution,
         screen: Resolution,
-        position: Position,
+        scaling: Scaling,
         expected: Resolution,
     ) {
-        let actual = compute_target_resolution(&image, &screen, &position);
+        let actual = compute_target_resolution(&image, &screen, &scaling);
 
         if actual != expected {
             eprintln!("actual != expected: {:?} != {:?}", actual, expected);

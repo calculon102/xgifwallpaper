@@ -28,7 +28,7 @@ use xatoms::*;
 const ARG_COLOR: &str = "COLOR";
 const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
-const ARG_POSITION: &str = "POSITION";
+const ARG_SCALE: &str = "SCALE";
 const ARG_VERBOSE: &str = "VERBOSE";
 
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
@@ -76,7 +76,7 @@ pub struct Options<'a> {
     background_color: &'a str,
     default_delay: u16,
     path_to_gif: &'a str,
-    position: Position,
+    scaling: Scaling,
     verbose: bool,
 }
 
@@ -149,13 +149,13 @@ fn init_args<'a>() -> ArgMatches<'a> {
                 .index(1),
         )
         .arg(
-            Arg::with_name(ARG_POSITION)
-                .short("p")
-                .long("position")
+            Arg::with_name(ARG_SCALE)
+                .short("s")
+                .long("scale")
                 .takes_value(true)
-                .possible_values(&["CENTER", "FILL", "MAX"])
-                .default_value("CENTER")
-                .help("Position of image"),
+                .possible_values(&["NONE", "FILL", "MAX"])
+                .default_value("NONE")
+                .help("Scaling of frames, relative to available screen"),
         )
         .get_matches()
 }
@@ -170,18 +170,18 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
         std::process::exit(EXIT_INVALID_DELAY)
     });
 
-    let position = match args.value_of(ARG_POSITION).unwrap() {
-        "CENTER" => Position::CENTER,
-        "FILL" => Position::FILL,
-        "MAX" => Position::MAX,
-        &_ => Position::CENTER, // Cannot happen to guarantee of args
+    let scaling = match args.value_of(ARG_SCALE).unwrap() {
+        "NONE" => Scaling::NONE,
+        "FILL" => Scaling::FILL,
+        "MAX" => Scaling::MAX,
+        &_ => Scaling::NONE, // Cannot happen to guarantee of args
     };
 
     Arc::new(Options {
         background_color: args.value_of(ARG_COLOR).unwrap(),
         default_delay: delay,
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        position,
+        scaling,
         verbose: args.is_present(ARG_VERBOSE),
     })
 }
@@ -316,19 +316,14 @@ fn render_wallpapers(
         };
 
         let target_resolution =
-            compute_target_resolution(&image_resolution, &screen_resolution, &options.position);
+            compute_target_resolution(&image_resolution, &screen_resolution, &options.scaling);
 
-        let placement =
-            get_image_placement(&target_resolution, &screen, ImagePlacementStrategy::CENTER);
+        let placement = get_image_placement(&target_resolution, &screen, Alignment::CENTER);
 
         log!(options, "placement: {:?}", placement);
 
         let wallpaper_on_screen = WallpaperOnScreen {
-            placement: get_image_placement(
-                &target_resolution,
-                &screen,
-                ImagePlacementStrategy::CENTER,
-            ),
+            placement: get_image_placement(&target_resolution, &screen, Alignment::CENTER),
             resolution: target_resolution.clone(),
             _screen: screen.clone(),
         };

@@ -4,7 +4,7 @@
 
 function run_debug {
 	set -x
-	../target/release/xgifwallpaper $VERBOSE -b $1 -p $2 $3 &
+	../target/release/xgifwallpaper $VERBOSE -b $1 -s $2 $3 &
 	{ set +x; } 2> /dev/null
 
 	last_pid=$!
