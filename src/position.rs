@@ -56,11 +56,14 @@ fn compute_fill_resolution(
     let d_width = screen_resolution.width - image_resolution.width;
     let d_height = screen_resolution.height - image_resolution.height;
 
+    let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
+    let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
+
     if d_width == 0 && d_height == 0 {
         result.width = screen_resolution.width;
         result.height = screen_resolution.height;
     } else {
-        if d_width >= d_height {
+        if screen_ratio > image_ratio {
             result.width = screen_resolution.width;
 
             let scale = screen_resolution.width as f32 / image_resolution.width as f32;
@@ -200,6 +203,15 @@ fn when_image_1000x1080_screen_500_1500_then_target_1500_1500() {
         Resolution::new(1000, 1000),
         Resolution::new(500, 1500),
         Resolution::new(1500, 1500),
+    );
+}
+
+#[test]
+fn when_image_2x1_screen_2560_1440_then_target_2560_2560() {
+    _test_compute_fill_resolution(
+        Resolution::new(2, 1),
+        Resolution::new(2560, 1440),
+        Resolution::new(2880, 1440),
     );
 }
 

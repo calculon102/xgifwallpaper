@@ -1,23 +1,26 @@
 #!/bin/sh
 
-BACKGROUND="white"
-POSITION="FILL"
-FILE="sample-1x1.gif"
-VERBOSE=""
+# Run from tests-directory
 
 function run_debug {
 	set -x
-	../target/debug/xgifwallpaper $VERBOSE -b $1 -p $2 $3 &
-	set +x
+	../target/release/xgifwallpaper $VERBOSE -b $1 -p $2 $3 &
+	{ set +x; } 2> /dev/null
 
 	last_pid=$!
-	sleep 10s
-	kill -KILL $last_pid
+	sleep $SLEEP_TIME
+	kill -INT $last_pid
 }
 
-cargo build
+BACKGROUND="white"
+FILE="sample-1x1.gif"
+POSITION="FILL"
+SLEEP_TIME="5s"
+VERBOSE=""
+
+cargo build --release
 
 run_debug $BACKGROUND $POSITION "sample-1x1.gif"
 run_debug $BACKGROUND $POSITION "sample-2x1.gif"
 run_debug $BACKGROUND $POSITION "sample-1x2.gif"
-run_debug $BACKGROUND $POSITION "sample-1x1-not-animated.gif"
+run_debug $BACKGROUND $POSITION "sample-1x1-one-frame.gif"
