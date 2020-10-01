@@ -155,7 +155,7 @@ fn init_args<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .possible_values(&["NONE", "FILL", "MAX"])
                 .default_value("NONE")
-                .help("Scaling of frames, relative to available screen"),
+                .help("Scale GIF-frames, relative to available screen."),
         )
         .get_matches()
 }
