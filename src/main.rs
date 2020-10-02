@@ -239,14 +239,10 @@ fn render_wallpapers(
         };
 
         let target_resolution =
-            compute_target_resolution(&image_resolution, &screen_resolution, &options.scaling);
-
-        let placement = get_image_placement(&target_resolution, &screen, Alignment::CENTER);
-
-        log!(options, "placement: {:?}", placement);
+            image_resolution.fit_to_screen(&screen_resolution, &options.scaling);
 
         let wallpaper_on_screen = WallpaperOnScreen {
-            placement: get_image_placement(&target_resolution, &screen, Alignment::CENTER),
+            placement: target_resolution.position_on_screen(&screen, Alignment::CENTER),
             resolution: target_resolution.clone(),
             _screen: screen.clone(),
         };

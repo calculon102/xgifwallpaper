@@ -130,6 +130,7 @@ mod tests {
 
     #[test]
     fn when_argument_default_delay_is_not_u16_then_use_default() {
+        // Test arbritary string
         let options = Options::_from_params(_create_params(vec!["-d", "a"]));
         assert_eq!(options.default_delay, 10);
 

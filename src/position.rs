@@ -19,7 +19,7 @@ pub enum Scaling {
 }
 
 /// Coordinates to place an image.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ImagePlacement {
     /// x-origin of the image raster to use.
     pub src_x: i32,
@@ -35,6 +35,26 @@ pub struct ImagePlacement {
     pub height: u32,
 }
 
+impl ImagePlacement {
+    pub fn new(
+        src_x: i32,
+        src_y: i32,
+        dest_x: i32,
+        dest_y: i32,
+        width: u32,
+        height: u32,
+    ) -> ImagePlacement {
+        ImagePlacement {
+            src_x,
+            src_y,
+            dest_x,
+            dest_y,
+            width,
+            height,
+        }
+    }
+}
+
 /// Width and height as one unit.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Debug)]
 pub struct Resolution {
@@ -47,114 +67,102 @@ impl Resolution {
     pub fn new(width: u32, height: u32) -> Resolution {
         Resolution { width, height }
     }
-}
 
-/// Calculates the resolution an image should have to respect given scaling.
-pub fn compute_target_resolution(
-    image_resolution: &Resolution,
-    screen_resolution: &Resolution,
-    scaling: &Scaling,
-) -> Resolution {
-    match *scaling {
-        Scaling::NONE => image_resolution.clone(),
-        Scaling::FILL => compute_scaled_resolution(image_resolution, screen_resolution, true),
-        Scaling::MAX => compute_scaled_resolution(image_resolution, screen_resolution, false),
-    }
-}
-
-/// Calculates the resolution an image should have to respect given scaling.
-///
-/// If `fill` is `true` the whole screen is used, at cost of image-information.
-///
-/// If `fill` is `false` the image is scaled as large as possible, without
-/// losing information.
-fn compute_scaled_resolution(
-    image_resolution: &Resolution,
-    screen_resolution: &Resolution,
-    fill: bool,
-) -> Resolution {
-    let mut result = Resolution::new(0, 0);
-
-    let same_resolution = screen_resolution.width == image_resolution.width
-        && screen_resolution.height == image_resolution.height;
-
-    if same_resolution {
-        result.width = screen_resolution.width;
-        result.height = screen_resolution.height;
-    } else {
-        let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
-        let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
-
-        let scale_to_width = if fill {
-            screen_ratio > image_ratio
-        } else {
-            screen_ratio < image_ratio
-        };
-
-        if scale_to_width {
-            result.width = screen_resolution.width;
-
-            let scale = screen_resolution.width as f32 / image_resolution.width as f32;
-            result.height = (image_resolution.height as f32 * scale) as u32;
-        } else {
-            result.height = screen_resolution.height;
-
-            let scale = screen_resolution.height as f32 / image_resolution.height as f32;
-            result.width = (image_resolution.width as f32 * scale) as u32;
+    /// Calculates the resolution an image should have to respect given scaling.
+    pub fn fit_to_screen(&self, screen_resolution: &Resolution, scaling: &Scaling) -> Resolution {
+        match *scaling {
+            Scaling::NONE => self.clone(),
+            Scaling::FILL => Resolution::scale_image_to_screen(self, screen_resolution, true),
+            Scaling::MAX => Resolution::scale_image_to_screen(self, screen_resolution, false),
         }
     }
 
-    result
-}
+    /// Calculates the resolution an image should have to respect given scaling.
+    ///
+    /// If `fill` is `true` the whole screen is used, at cost of image-information.
+    ///
+    /// If `fill` is `false` the image is scaled as large as possible, without
+    /// losing information.
+    fn scale_image_to_screen(
+        image_resolution: &Resolution,
+        screen_resolution: &Resolution,
+        fill: bool,
+    ) -> Resolution {
+        let mut result = Resolution::new(0, 0);
 
-/// Computes coordinates of image for given alignment on a screen.
-pub fn get_image_placement(
-    image_resolution: &Resolution,
-    screen: &Screen,
-    strategy: Alignment,
-) -> ImagePlacement {
-    match strategy {
-        Alignment::CENTER => center_image(image_resolution.width, image_resolution.height, screen),
+        let same_resolution = screen_resolution.width == image_resolution.width
+            && screen_resolution.height == image_resolution.height;
+
+        if same_resolution {
+            result.width = screen_resolution.width;
+            result.height = screen_resolution.height;
+        } else {
+            let screen_ratio = screen_resolution.width as f32 / screen_resolution.height as f32;
+            let image_ratio = image_resolution.width as f32 / image_resolution.height as f32;
+
+            let scale_to_width = if fill {
+                screen_ratio > image_ratio
+            } else {
+                screen_ratio < image_ratio
+            };
+
+            if scale_to_width {
+                result.width = screen_resolution.width;
+
+                let scale = screen_resolution.width as f32 / image_resolution.width as f32;
+                result.height = (image_resolution.height as f32 * scale) as u32;
+            } else {
+                result.height = screen_resolution.height;
+
+                let scale = screen_resolution.height as f32 / image_resolution.height as f32;
+                result.width = (image_resolution.width as f32 * scale) as u32;
+            }
+        }
+
+        result
     }
-}
 
-// TODO Test
-/// Places an image on screen, aligned to the center. Both horizontally and
-/// vertically.
-fn center_image(width: u32, height: u32, screen: &Screen) -> ImagePlacement {
-    let mut out = ImagePlacement {
-        src_x: 0,
-        src_y: 0,
-        dest_x: screen.x_org,
-        dest_y: screen.y_org,
-        width,
-        height,
-    };
-
-    if width > screen.width {
-        out.src_x = ((width - screen.width) / 2) as i32;
-        out.width = screen.width;
+    /// Computes coordinates of image for given alignment on a screen.
+    pub fn position_on_screen(&self, screen: &Screen, alignment: Alignment) -> ImagePlacement {
+        match alignment {
+            Alignment::CENTER => Resolution::center_on_screen(self.width, self.height, screen),
+        }
     }
 
-    if height > screen.height {
-        out.src_y = ((height - screen.height) / 2) as i32;
-        out.height = screen.height;
-    }
+    /// Places an image on screen, aligned to the center. Both horizontally and
+    /// vertically.
+    fn center_on_screen(width: u32, height: u32, screen: &Screen) -> ImagePlacement {
+        let mut out = ImagePlacement::new(0, 0, screen.x_org, screen.y_org, width, height);
 
-    if screen.width > width {
-        out.dest_x = screen.x_org + ((screen.width - width) / 2) as i32;
-    }
+        if width > screen.width {
+            out.src_x = ((width - screen.width) / 2) as i32;
+            out.width = screen.width;
+        }
 
-    if screen.height > height {
-        out.dest_y = screen.y_org + ((screen.height - height) / 2) as i32;
-    }
+        if height > screen.height {
+            out.src_y = ((height - screen.height) / 2) as i32;
+            out.height = screen.height;
+        }
 
-    return out;
+        if screen.width > width {
+            out.dest_x = screen.x_org + ((screen.width - width) / 2) as i32;
+        }
+
+        if screen.height > height {
+            out.dest_y = screen.y_org + ((screen.height - height) / 2) as i32;
+        }
+
+        return out;
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Alignment;
+    use super::ImagePlacement;
+    use super::Resolution;
+    use super::Scaling;
+    use super::Screen;
 
     #[test]
     fn when_position_is_center_then_target_resolutions_equals_image_resolution() {
@@ -167,11 +175,7 @@ mod tests {
 
         let image_resolution = Resolution::new(1000, 1000);
 
-        let actual = compute_target_resolution(
-            &image_resolution,
-            &Resolution::new(1080, 1920),
-            &Scaling::NONE,
-        );
+        let actual = image_resolution.fit_to_screen(&Resolution::new(1080, 1920), &Scaling::NONE);
 
         assert_eq!(true, actual == image_resolution);
     }
@@ -320,6 +324,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn when_image_1x1_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(1, 1).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(0, 0, 1, 1, 1, 1));
+    }
+
+    #[test]
+    fn when_image_1x3_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(1, 3).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(0, 0, 1, 0, 1, 3));
+    }
+
+    #[test]
+    fn when_image_3x1_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(3, 1).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(0, 0, 0, 1, 3, 1));
+    }
+
+    #[test]
+    fn when_image_3x3_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(3, 3).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(0, 0, 0, 0, 3, 3));
+    }
+
+    #[test]
+    fn when_image_1x5_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(1, 5).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(0, 1, 1, 0, 1, 3));
+    }
+
+    #[test]
+    fn when_image_5x1_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(5, 1).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(1, 0, 0, 1, 3, 1));
+    }
+
+    #[test]
+    fn when_image_5x5_screen_3x3_then_center() {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(5, 5).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, ImagePlacement::new(1, 1, 0, 0, 3, 3));
+    }
+
     fn _test_compute_fill_resolution(image: Resolution, screen: Resolution, expected: Resolution) {
         _test_compute_resolution(image, screen, Scaling::FILL, expected);
     }
@@ -334,12 +387,22 @@ mod tests {
         scaling: Scaling,
         expected: Resolution,
     ) {
-        let actual = compute_target_resolution(&image, &screen, &scaling);
+        let actual = image.fit_to_screen(&screen, &scaling);
 
         if actual != expected {
             eprintln!("actual != expected: {:?} != {:?}", actual, expected);
         }
 
         assert_eq!(true, actual == expected);
+    }
+
+    fn _create_screen0_3x3() -> Screen {
+        Screen {
+            screen_number: 0,
+            x_org: 0,
+            y_org: 0,
+            width: 3,
+            height: 3,
+        }
     }
 }
