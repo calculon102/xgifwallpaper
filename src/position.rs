@@ -75,10 +75,10 @@ fn compute_scaled_resolution(
 ) -> Resolution {
     let mut result = Resolution::new(0, 0);
 
-    let d_width = screen_resolution.width - image_resolution.width;
-    let d_height = screen_resolution.height - image_resolution.height;
+    let same_resolution = screen_resolution.width == image_resolution.width
+        && screen_resolution.height == image_resolution.height;
 
-    if d_width == 0 && d_height == 0 {
+    if same_resolution {
         result.width = screen_resolution.width;
         result.height = screen_resolution.height;
     } else {
@@ -152,6 +152,7 @@ fn center_image(width: u32, height: u32, screen: &Screen) -> ImagePlacement {
     return out;
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
