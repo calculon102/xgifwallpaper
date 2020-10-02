@@ -102,30 +102,67 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
     }
 }
 
+// Test only xgifwallpaper-specifics via arguments. Don't test behaviour of
+// clap, like mandatory fields, valid options or order of arguments.
 #[cfg(test)]
 mod tests {
     use super::Options;
     use super::Scaling;
 
+    const PATH_TO_GIF: &str = "wallpaper.gif";
+
     #[test]
-    fn when_argument_scale_is_none_match_enum() {
+    fn use_argument_path_to_gif() {
+        let options = Options::_from_params(_create_params(vec![]));
+        assert_eq!(options.path_to_gif, PATH_TO_GIF);
+    }
+
+    #[test]
+    fn use_defaults_for_omitted_arguments() {
+        let options = Options::_from_params(_create_params(vec![]));
+        assert_eq!(options.background_color, "#000000");
+        assert_eq!(options.default_delay, 10);
+        assert_eq!(options.verbose, false);
+        assert_eq!(options.scaling, Scaling::NONE);
+    }
+
+    #[test]
+    fn when_argument_background_color_is_given_then_use_it() {
+        let options = Options::_from_params(_create_params(vec!["-b", "white"]));
+        assert_eq!(options.background_color, "white");
+    }
+
+    #[test]
+    fn when_argument_default_delay_is_given_then_use_it() {
+        let options = Options::_from_params(_create_params(vec!["-d", "666"]));
+        assert_eq!(options.default_delay, 666);
+    }
+
+    #[test]
+    fn when_argument_verbose_is_given_then_be_it() {
+        let options = Options::_from_params(_create_params(vec!["-v"]));
+        assert_eq!(options.verbose, true);
+    }
+
+    #[test]
+    fn when_argument_scale_is_none_then_match_enum() {
         let options = Options::_from_params(_create_params(vec!["-s", "NONE"]));
         assert_eq!(options.scaling, Scaling::NONE);
     }
 
     #[test]
-    fn when_argument_scale_is_fill_match_enum() {
+    fn when_argument_scale_is_fill_then_match_enum() {
         let options = Options::_from_params(_create_params(vec!["-s", "FILL"]));
         assert_eq!(options.scaling, Scaling::FILL);
     }
 
     #[test]
-    fn when_argument_scale_is_max_match_enum() {
+    fn when_argument_scale_is_max_then_match_enum() {
         let options = Options::_from_params(_create_params(vec!["-s", "MAX"]));
         assert_eq!(options.scaling, Scaling::MAX);
     }
 
     fn _create_params(custom_params: Vec<&str>) -> Vec<&str> {
-        [vec!["xgifwallpaper"], custom_params, vec!["wallpaper.gif"]].concat()
+        [vec!["xgifwallpaper"], custom_params, vec![PATH_TO_GIF]].concat()
     }
 }
