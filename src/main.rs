@@ -1,9 +1,8 @@
+mod options;
 mod position;
 mod screen_info;
 mod shm;
 mod xatoms;
-
-use clap::{value_t, App, Arg, ArgMatches};
 
 use pix::rgb::Rgba8;
 
@@ -20,20 +19,17 @@ use std::{thread, time};
 
 use x11::xlib::*;
 
+use options::*;
 use position::*;
 use screen_info::*;
 use shm::*;
 use xatoms::*;
 
-const ARG_COLOR: &str = "COLOR";
-const ARG_DELAY: &str = "DELAY";
-const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
-const ARG_SCALE: &str = "SCALE";
-const ARG_VERBOSE: &str = "VERBOSE";
-
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
 const EXIT_UNKOWN_COLOR: i32 = 102;
 const EXIT_INVALID_DELAY: i32 = 103;
+
+const VERSION: &str = "0.2.0-alpha";
 
 macro_rules! log {
     ($is_verbose:ident, $message:expr) => {
@@ -69,15 +65,6 @@ struct Frame {
     raster: Rc<Vec<c_char>>,
     ximage: Box<XImage>,
     xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
-}
-
-/// Runtime options as given by the caller of this program.
-pub struct Options<'a> {
-    background_color: &'a str,
-    default_delay: u16,
-    path_to_gif: &'a str,
-    scaling: Scaling,
-    verbose: bool,
 }
 
 /// X11-specific control-data and references.
@@ -117,76 +104,6 @@ fn main() {
     do_animation(&xcontext, &mut wallpapers, options.clone(), running.clone());
 
     clean_up(xcontext, wallpapers, options.clone());
-}
-
-/// Declare command-line-arguments.
-fn init_args<'a>() -> ArgMatches<'a> {
-    App::new("xgifwallpaper")
-        .version("0.2.0")
-        .author("Frank Großgasteiger <frank@grossgasteiger.de>")
-        .about("Animates a GIF as wallpaper in your X-session")
-        .arg(
-            Arg::with_name(ARG_COLOR)
-                .short("b")
-                .long("background-color")
-                .takes_value(true)
-                .value_name("X11-color")
-                .default_value("#000000")
-                .help("X11 compilant color-name to paint background."),
-        )
-        .arg(
-            Arg::with_name(ARG_DELAY)
-                .short("d")
-                .long("default-delay")
-                .takes_value(true)
-                .value_name("default-delay")
-                .default_value("10")
-                .help("Delay in centiseconds between frames, if unspecified in GIF."),
-        )
-        .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
-        .arg(
-            Arg::with_name(ARG_PATH_TO_GIF)
-                .help("Path to GIF-file")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            Arg::with_name(ARG_SCALE)
-                .short("s")
-                .long("scale")
-                .takes_value(true)
-                .possible_values(&["NONE", "FILL", "MAX"])
-                .default_value("NONE")
-                .help("Scale GIF-frames, relative to available screen."),
-        )
-        .get_matches()
-}
-
-/// Parse arguments from command line.
-fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
-    let delay = value_t!(args, ARG_DELAY, u16).unwrap_or_else(|_e| {
-        eprintln!(
-            "Use a value between {} and {} as default-delay.",
-            u16::MIN,
-            u16::MAX
-        );
-        std::process::exit(EXIT_INVALID_DELAY)
-    });
-
-    let scaling = match args.value_of(ARG_SCALE).unwrap() {
-        "NONE" => Scaling::NONE,
-        "FILL" => Scaling::FILL,
-        "MAX" => Scaling::MAX,
-        &_ => Scaling::NONE, // Cannot happen, due to guarantee of args
-    };
-
-    Arc::new(Options {
-        background_color: args.value_of(ARG_COLOR).unwrap(),
-        default_delay: delay,
-        path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap(),
-        scaling,
-        verbose: args.is_present(ARG_VERBOSE),
-    })
 }
 
 /// Register handler for interrupt-signal.
