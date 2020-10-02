@@ -2,6 +2,10 @@
 
 Use an animated GIF as wallpaper on X11-systems.
 
+`xgifwallpaper` draws on the root window. On window-managers, where the root
+window is hidden, there will be no visible effect. Examples are KDE Plasma and
+Gnome.
+
 By using shared memory between X11 client and server, this is not as 
 performance-inefficient as it may seem at first. Nonetheless, expect some
 memory to be used for bigger GIFs with a lot of frames.
@@ -9,9 +13,7 @@ memory to be used for bigger GIFs with a lot of frames.
 Due to using the shared memory extension of X11, this program will not work
 in X11 sessions over the network.
 
-Some window managers may hide the X11 root window, like KDE Plasma and Gnome do.
-In that case, there will be no visible effect.
-
+`xgifwallpaper` will use all available screens.
 
 ## Usage
 
@@ -29,6 +31,8 @@ FLAGS:
 OPTIONS:
     -b, --background-color <X11-color>     X11 compilant color-name to paint background. [default: #000000]
     -d, --default-delay <default-delay>    Delay in centiseconds between frames, if unspecified in GIF. [default: 10]
+    -s, --scale <SCALE>                    Scaling of frames, relative to available screen [default: NONE]
+                                           values: NONE, FILL, MAX]
 
 ARGS:
     <PATH_TO_GIF>    Path to GIF-file
@@ -36,11 +40,27 @@ ARGS:
 
 ### Examples
 
+Center `mybackground.gif` on all screens:
+
 `xgifwallpaper mybackground.gif`
+
+Set background color to `#ffaa00`:
 
 `xgifwallpaper -b "#ffaa00" mybackground.gif`
 
-`xgifwallpaper -d 10 mybackground.gif`
+Override default delay with 100 centiseconds:
+
+`xgifwallpaper -d 100 mybackground.gif`
+
+Scale `mybackground.gif` to fill the entire screen and be verbose:
+
+`xgifwallpaper -v -s FILL mybackground.gif`
+
+Scale `mybackground.gif` to maximize used screen-space, but without cutting the
+image. Also, set background-color to white, override default-delay with 30
+centiseconds and be verbose:
+
+`xgifwallpaper -v -b white -d 30 -s MAX mybackground.gif`
 
 ## Install
 
@@ -85,14 +105,14 @@ of the AUR-package:
 Rust is not included, as I would suggest installing it the way described above.
 
 #### Ubuntu
+
 On *Ubuntu*-based-systems, use
 
 ```console
 $ sudo apt install libx11-dev libxinerama-dev libxshm-dev
 ```
 
-This assumes, `git`, `rust`, `libc` and a C-compiler-suite are already
-installed.
+`git`, `rust`, `libc` and a C-compiler-suite need to be installed.
 
 This should also work on Debian, but this is not verified.
 
@@ -104,5 +124,5 @@ From project-root:
 $ cargo build --release
 ```
 
-The result will be built as `target/release/xgifwallpaper`.
+The result is built as `target/release/xgifwallpaper`.
 
