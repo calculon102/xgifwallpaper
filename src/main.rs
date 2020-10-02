@@ -89,6 +89,7 @@ pub struct XContext {
     pixmap: Pixmap,
 }
 
+/// Application entry-point
 fn main() {
     if !is_xshm_available() {
         eprintln!("The X server in use does not support the shared memory extension (xshm).");
@@ -118,6 +119,7 @@ fn main() {
     clean_up(xcontext, wallpapers, options.clone());
 }
 
+/// Declare command-line-arguments.
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("xgifwallpaper")
         .version("0.2.0")
@@ -160,6 +162,7 @@ fn init_args<'a>() -> ArgMatches<'a> {
         .get_matches()
 }
 
+/// Parse arguments from command line.
 fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
     let delay = value_t!(args, ARG_DELAY, u16).unwrap_or_else(|_e| {
         eprintln!(
@@ -174,7 +177,7 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
         "NONE" => Scaling::NONE,
         "FILL" => Scaling::FILL,
         "MAX" => Scaling::MAX,
-        &_ => Scaling::NONE, // Cannot happen to guarantee of args
+        &_ => Scaling::NONE, // Cannot happen, due to guarantee of args
     };
 
     Arc::new(Options {
@@ -186,6 +189,7 @@ fn parse_args<'a>(args: &'a ArgMatches<'a>) -> Arc<Options<'a>> {
     })
 }
 
+/// Register handler for interrupt-signal.
 fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
     let verbose = options.verbose;
 
@@ -199,6 +203,7 @@ fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) 
     .expect("Error setting Ctrl-C handler");
 }
 
+/// Establish connection and context to the X-server
 fn create_xcontext() -> Box<XContext> {
     let display = unsafe { XOpenDisplay(ptr::null()) };
     let screen = unsafe { XDefaultScreen(display) };
@@ -214,6 +219,7 @@ fn create_xcontext() -> Box<XContext> {
     })
 }
 
+/// Parse string as X11-color.
 fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
     let mut xcolor: XColor = XColor {
         pixel: 0,
@@ -251,6 +257,7 @@ fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
     Box::new(xcolor)
 }
 
+/// Create and prepare the pixmap, where the wallpaper is drawn onto.
 fn prepare_pixmap(xcontext: &Box<XContext>, color: &Box<XColor>) -> Pixmap {
     let dsp = xcontext.display;
     let scr = xcontext.screen;
@@ -359,13 +366,15 @@ fn render_wallpapers(
     }
 }
 
-fn create_decoder(filename: &str) -> gift::Decoder<BufReader<File>> {
-    gift::Decoder::new(File::open(filename).expect("Unable to read file"))
+/// Create GIF-decoder from file.
+fn create_decoder(path_to_gif: &str) -> gift::Decoder<BufReader<File>> {
+    gift::Decoder::new(File::open(path_to_gif).expect("Unable to read file"))
 }
 
-fn gather_disposal_methods(filename: &str) -> Vec<gift::block::DisposalMethod> {
+/// Parse GIF to gather the disposal-method for each frame.
+fn gather_disposal_methods(path_to_gif: &str) -> Vec<gift::block::DisposalMethod> {
     let mut methods: Vec<gift::block::DisposalMethod> = Vec::new();
-    let frames = create_decoder(filename).into_frames();
+    let frames = create_decoder(path_to_gif).into_frames();
     for frame in frames {
         if frame.is_ok() {
             let f = frame.unwrap();
@@ -383,6 +392,7 @@ fn gather_disposal_methods(filename: &str) -> Vec<gift::block::DisposalMethod> {
     methods
 }
 
+/// Render GIF-frames as bitmaps for a specific screen.
 fn render_frames(
     xcontext: &Box<XContext>,
     color: &Box<XColor>,
@@ -552,6 +562,7 @@ fn render_frames(
     return out;
 }
 
+/// Resize given RGBA-raster to target-resolution.
 fn resize_raster(
     raster: &pix::Raster<pix::rgb::SRgba8>,
     target_resolution: &Resolution,
@@ -595,7 +606,7 @@ fn resize_raster(
     }
 }
 
-/// Clear previous backgrounds on root
+/// Clear previous backgrounds on root.
 fn clear_background(xcontext: &Box<XContext>, options: Arc<Options>) {
     remove_root_pixmap_atoms(&xcontext, options.clone());
 
@@ -605,6 +616,8 @@ fn clear_background(xcontext: &Box<XContext>, options: Arc<Options>) {
     }
 }
 
+/// Loops the pre-renders wallpapers on each screen. Will only stop on
+/// interrupt-signal.
 fn do_animation(
     xcontext: &Box<XContext>,
     wallpapers: &mut Wallpapers,
@@ -686,6 +699,7 @@ fn do_animation(
     delete_atom(&xcontext, atom_eroot);
 }
 
+/// Clears reference and (shared-)-memory.
 fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Options>) {
     log!(options, "Free images in shared memory");
 
