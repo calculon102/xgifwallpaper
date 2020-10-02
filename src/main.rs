@@ -27,7 +27,6 @@ use xatoms::*;
 
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
 const EXIT_UNKOWN_COLOR: i32 = 102;
-const EXIT_INVALID_DELAY: i32 = 103;
 
 const VERSION: &str = "0.2.0-alpha";
 

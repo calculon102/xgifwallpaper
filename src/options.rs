@@ -4,7 +4,6 @@
 use clap::{value_t, App, Arg, ArgMatches};
 
 use super::position::Scaling;
-use super::EXIT_INVALID_DELAY;
 use super::VERSION;
 
 const ARG_COLOR: &str = "COLOR";
@@ -12,6 +11,9 @@ const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
 const ARG_SCALE: &str = "SCALE";
 const ARG_VERBOSE: &str = "VERBOSE";
+
+const DEFAULT_DELAY: u16 = 10;
+const DEFAULT_DELAY_STR: &str = "10";
 
 /// Runtime options as given by the caller of this program.
 pub struct Options {
@@ -54,7 +56,7 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
                 .long("default-delay")
                 .takes_value(true)
                 .value_name("default-delay")
-                .default_value("10")
+                .default_value(DEFAULT_DELAY_STR)
                 .help("Delay in centiseconds between frames, if unspecified in GIF."),
         )
         .arg(Arg::with_name(ARG_VERBOSE).short("v").help("Verbose mode"))
@@ -83,7 +85,7 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
             u16::MIN,
             u16::MAX
         );
-        std::process::exit(EXIT_INVALID_DELAY)
+        DEFAULT_DELAY
     });
 
     let scaling = match args.value_of(ARG_SCALE).unwrap() {
@@ -124,6 +126,21 @@ mod tests {
         assert_eq!(options.default_delay, 10);
         assert_eq!(options.verbose, false);
         assert_eq!(options.scaling, Scaling::NONE);
+    }
+
+    #[test]
+    fn when_argument_default_delay_is_not_u16_then_use_default() {
+        let options = Options::_from_params(_create_params(vec!["-d", "a"]));
+        assert_eq!(options.default_delay, 10);
+
+        let min_boundary: i32 = u16::MIN as i32 - 1;
+        let min_boundary_str = "\"".to_owned() + &min_boundary.to_string() + "\"";
+        let options = Options::_from_params(_create_params(vec!["-d", &min_boundary_str]));
+        assert_eq!(options.default_delay, 10);
+
+        let max_boundary: i32 = u16::MAX as i32 + 1;
+        let options = Options::_from_params(_create_params(vec!["-d", &max_boundary.to_string()]));
+        assert_eq!(options.default_delay, 10);
     }
 
     #[test]
