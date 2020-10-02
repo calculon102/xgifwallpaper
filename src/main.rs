@@ -19,7 +19,7 @@ use std::{thread, time};
 
 use x11::xlib::*;
 
-use options::*;
+use options::Options;
 use position::*;
 use screen_info::*;
 use shm::*;
@@ -83,9 +83,7 @@ fn main() {
         std::process::exit(EXIT_XSHM_UNSUPPORTED);
     }
 
-    let args = init_args();
-    let options = parse_args(&args);
-
+    let options = Arc::new(Options::from_args());
     let running = Arc::new(AtomicBool::new(true));
 
     init_sigint_handler(options.clone(), running.clone());
@@ -93,7 +91,7 @@ fn main() {
     // Pixmap of struct must be set later, is mut therefore
     let mut xcontext = create_xcontext();
 
-    let color = parse_color(&xcontext, options.background_color);
+    let color = parse_color(&xcontext, options.background_color.as_str());
 
     let mut wallpapers = render_wallpapers(&xcontext, &color, options.clone(), running.clone());
 
@@ -107,7 +105,7 @@ fn main() {
 }
 
 /// Register handler for interrupt-signal.
-fn init_sigint_handler<'a>(options: Arc<Options<'a>>, running: Arc<AtomicBool>) {
+fn init_sigint_handler<'a>(options: Arc<Options>, running: Arc<AtomicBool>) {
     let verbose = options.verbose;
 
     ctrlc::set_handler(move || {
@@ -207,13 +205,15 @@ fn render_wallpapers(
     running: Arc<AtomicBool>,
 ) -> Wallpapers {
     // Decode gif-frames into raster-steps
+    let path_to_gif = options.path_to_gif.as_str();
+
     // TODO Try using only low-level frames
     // TODO Prevent double-encoding, by re-using iterator?
-    let mut steps = create_decoder(options.path_to_gif).into_steps();
-    let methods = gather_disposal_methods(options.path_to_gif);
+    let mut steps = create_decoder(path_to_gif).into_steps();
+    let methods = gather_disposal_methods(path_to_gif);
 
     // Determine image-resolution
-    let first_step = create_decoder(options.path_to_gif)
+    let first_step = create_decoder(path_to_gif)
         .into_steps()
         .nth(0)
         .unwrap()
