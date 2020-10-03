@@ -25,6 +25,7 @@ use screens::*;
 use shm::*;
 use xatoms::*;
 
+const EXIT_NO_XDISPLAY: i32 = 100;
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
 const EXIT_UNKOWN_COLOR: i32 = 102;
 
@@ -77,11 +78,6 @@ pub struct XContext {
 
 /// Application entry-point
 fn main() {
-    if !is_xshm_available() {
-        eprintln!("The X server in use does not support the shared memory extension (xshm).");
-        std::process::exit(EXIT_XSHM_UNSUPPORTED);
-    }
-
     let options = Arc::new(Options::from_args());
     let running = Arc::new(AtomicBool::new(true));
 
@@ -120,6 +116,17 @@ fn init_sigint_handler<'a>(options: Arc<Options>, running: Arc<AtomicBool>) {
 /// Establish connection and context to the X-server
 fn create_xcontext() -> Box<XContext> {
     let display = unsafe { XOpenDisplay(ptr::null()) };
+
+    if display.is_null() {
+        eprintln!("Failed to open display. Is X running in your session?");
+        std::process::exit(EXIT_NO_XDISPLAY);
+    }
+
+    if !is_xshm_available(display) {
+        eprintln!("The X server in use does not support the shared memory extension (xshm).");
+        std::process::exit(EXIT_XSHM_UNSUPPORTED);
+    }
+
     let screen = unsafe { XDefaultScreen(display) };
     let gc = unsafe { XDefaultGC(display, screen) };
     let root = unsafe { XRootWindow(display, screen) };

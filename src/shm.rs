@@ -11,9 +11,7 @@ use x11::xlib::*;
 use x11::xshm;
 
 /// Returns `true` if X-Server supports xshm.
-pub fn is_xshm_available() -> bool {
-    let display = unsafe { XOpenDisplay(null()) };
-
+pub fn is_xshm_available(display: *mut Display) -> bool {
     let status = unsafe { xshm::XShmQueryExtension(display) };
 
     unsafe { XCloseDisplay(display) };
