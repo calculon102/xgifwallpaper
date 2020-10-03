@@ -30,7 +30,7 @@ const EXIT_XSHM_UNSUPPORTED: i32 = 101;
 const EXIT_UNKOWN_COLOR: i32 = 102;
 const EXIT_INVALID_FILE: i32 = 103;
 
-const VERSION: &str = "0.2.0-alpha";
+const VERSION: &str = "0.2.0";
 
 macro_rules! log {
     ($is_verbose:ident, $message:expr) => {
