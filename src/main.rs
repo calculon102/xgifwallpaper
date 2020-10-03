@@ -28,6 +28,7 @@ use xatoms::*;
 const EXIT_NO_XDISPLAY: i32 = 100;
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
 const EXIT_UNKOWN_COLOR: i32 = 102;
+const EXIT_INVALID_FILE: i32 = 103;
 
 const VERSION: &str = "0.2.0-alpha";
 
@@ -255,11 +256,21 @@ fn render_wallpapers(
     let methods = gather_disposal_methods(path_to_gif);
 
     // Determine image-resolution
-    let first_step = create_decoder(path_to_gif)
+    let first_step_result = create_decoder(path_to_gif)
         .into_steps()
         .nth(0)
-        .unwrap()
-        .unwrap();
+        .expect("No steps decoded");
+
+    if first_step_result.is_err() {
+        eprintln!(
+            "File {} is not a valid GIF: {:?}",
+            path_to_gif,
+            first_step_result.err().unwrap()
+        );
+        std::process::exit(EXIT_INVALID_FILE);
+    }
+
+    let first_step = first_step_result.unwrap();
     let raster = first_step.raster();
     let image_resolution = Resolution {
         width: raster.width(),
