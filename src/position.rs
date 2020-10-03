@@ -2,8 +2,9 @@
 //! and options for placement and scaling.
 use crate::screen_info::*;
 
-/// Determines how an image is to be aligned, relative to a screen.
+/// Alignments of 2-dimensional rectangles.
 pub enum Alignment {
+    /// Center horizontally and vertically, relative to parent.
     CENTER,
 }
 
@@ -12,26 +13,26 @@ pub enum Alignment {
 pub enum Scaling {
     /// Don't scale
     NONE,
-    /// Image should fill the whole screen, even if cut off.
+    /// Fill the whole screen, even if content is cut off.
     FILL,
-    /// Image should be as large as possible, without losing content.
+    /// Be as large as possible, without losing content.
     MAX,
 }
 
 /// Coordinates to place an image.
 #[derive(Debug, Eq, PartialEq)]
 pub struct ImagePlacement {
-    /// x-origin of the image raster to use.
+    /// visible x-origin.
     pub src_x: i32,
-    /// y-origin of the image raster to use.
+    /// visible y-origin.
     pub src_y: i32,
-    /// x-origin of the screen to use.
+    /// position on x-axis.
     pub dest_x: i32,
-    /// y-origin of the screen to use.
+    /// position on y-axis.
     pub dest_y: i32,
-    /// width of the image to render, relative to src_x.
+    /// visible width, relative to src_x.
     pub width: u32,
-    /// height of the image to render, relative to src_y.
+    /// visible height, relative to src_y.
     pub height: u32,
 }
 
@@ -326,44 +327,32 @@ mod tests {
 
     #[test]
     fn when_image_1x1_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(1, 1).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(0, 0, 1, 1, 1, 1));
+        _test_center_on_screen(1, 1, ImagePlacement::new(0, 0, 1, 1, 1, 1));
     }
 
     #[test]
     fn when_image_1x3_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(1, 3).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(0, 0, 1, 0, 1, 3));
+        _test_center_on_screen(1, 3, ImagePlacement::new(0, 0, 1, 0, 1, 3));
     }
 
     #[test]
     fn when_image_3x1_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(3, 1).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(0, 0, 0, 1, 3, 1));
+        _test_center_on_screen(3, 1, ImagePlacement::new(0, 0, 0, 1, 3, 1));
     }
 
     #[test]
     fn when_image_3x3_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(3, 3).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(0, 0, 0, 0, 3, 3));
+        _test_center_on_screen(3, 3, ImagePlacement::new(0, 0, 0, 0, 3, 3));
     }
 
     #[test]
     fn when_image_1x5_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(1, 5).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(0, 1, 1, 0, 1, 3));
+        _test_center_on_screen(1, 5, ImagePlacement::new(0, 1, 1, 0, 1, 3));
     }
 
     #[test]
     fn when_image_5x1_screen_3x3_then_center() {
-        let screen = _create_screen0_3x3();
-        let actual = Resolution::new(5, 1).position_on_screen(&screen, Alignment::CENTER);
-        assert_eq!(actual, ImagePlacement::new(1, 0, 0, 1, 3, 1));
+        _test_center_on_screen(5, 1, ImagePlacement::new(1, 0, 0, 1, 3, 1));
     }
 
     #[test]
@@ -404,5 +393,11 @@ mod tests {
             width: 3,
             height: 3,
         }
+    }
+
+    fn _test_center_on_screen(width: u32, height: u32, expected: ImagePlacement) {
+        let screen = _create_screen0_3x3();
+        let actual = Resolution::new(width, height).position_on_screen(&screen, Alignment::CENTER);
+        assert_eq!(actual, expected);
     }
 }
