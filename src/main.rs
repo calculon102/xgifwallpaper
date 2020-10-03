@@ -34,6 +34,20 @@ const VERSION: &str = "0.2.0-alpha";
 macro_rules! log {
     ($is_verbose:ident, $message:expr) => {
         if $is_verbose.verbose {
+            print!($message);
+        }
+    };
+
+    ($is_verbose:ident, $message:expr, $($args:expr),*) => {
+        if $is_verbose.verbose {
+            print!($message $(,$args)*);
+        }
+    };
+}
+
+macro_rules! logln {
+    ($is_verbose:ident, $message:expr) => {
+        if $is_verbose.verbose {
             println!($message);
         }
     };
@@ -68,6 +82,7 @@ struct Frame {
 }
 
 /// X11-specific control-data and references.
+#[derive(Debug)]
 pub struct XContext {
     display: *mut x11::xlib::Display,
     screen: c_int,
@@ -84,9 +99,9 @@ fn main() {
     init_sigint_handler(options.clone(), running.clone());
 
     // Pixmap of struct must be set later, is mut therefore
-    let mut xcontext = create_xcontext();
+    let mut xcontext = create_xcontext(options.clone());
 
-    let color = parse_color(&xcontext, options.background_color.as_str());
+    let color = parse_color(&xcontext, options.clone());
 
     let mut wallpapers = render_wallpapers(&xcontext, &color, options.clone(), running.clone());
 
@@ -96,7 +111,7 @@ fn main() {
 
     do_animation(&xcontext, &mut wallpapers, options.clone(), running.clone());
 
-    clean_up(xcontext, wallpapers, options.clone());
+    clean_up(xcontext, wallpapers, options);
 }
 
 /// Register handler for interrupt-signal.
@@ -114,8 +129,10 @@ fn init_sigint_handler<'a>(options: Arc<Options>, running: Arc<AtomicBool>) {
 }
 
 /// Establish connection and context to the X-server
-fn create_xcontext() -> Box<XContext> {
+fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
     let display = unsafe { XOpenDisplay(ptr::null()) };
+
+    log!(opts, "Open X-display: ");
 
     if display.is_null() {
         eprintln!("Failed to open display. Is X running in your session?");
@@ -127,9 +144,23 @@ fn create_xcontext() -> Box<XContext> {
         std::process::exit(EXIT_XSHM_UNSUPPORTED);
     }
 
+    logln!(opts, "connection-number={:?}", unsafe {
+        XConnectionNumber(display)
+    });
+
+    log!(opts, "Query context from X server: ");
+
     let screen = unsafe { XDefaultScreen(display) };
     let gc = unsafe { XDefaultGC(display, screen) };
     let root = unsafe { XRootWindow(display, screen) };
+
+    logln!(
+        opts,
+        "DefaultScreen={:?}, DefaultGC={:?}, RootWindow={:?}",
+        screen,
+        gc,
+        root
+    );
 
     Box::new(XContext {
         display,
@@ -141,7 +172,7 @@ fn create_xcontext() -> Box<XContext> {
 }
 
 /// Parse string as X11-color.
-fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
+fn parse_color(xcontext: &XContext, opts: Arc<Options>) -> Box<XColor> {
     let mut xcolor: XColor = XColor {
         pixel: 0,
         red: 0,
@@ -152,8 +183,11 @@ fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
     };
 
     let xcolor_ptr: *mut XColor = &mut xcolor;
-
+    let color_str = opts.background_color.as_str();
     let cmap = unsafe { XDefaultColormap(xcontext.display, xcontext.screen) };
+
+    log!(opts, "Parse \"{}\" as X11-color: ", color_str);
+
     let result = unsafe {
         XParseColor(
             xcontext.display,
@@ -174,6 +208,8 @@ fn parse_color(xcontext: &XContext, color_str: &str) -> Box<XColor> {
     }
 
     unsafe { XAllocColor(xcontext.display, cmap, xcolor_ptr) };
+
+    logln!(opts, "{:?}", xcolor);
 
     Box::new(xcolor)
 }
@@ -237,7 +273,7 @@ fn render_wallpapers(
     let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
 
     for screen in xscreens.screens {
-        log!(options, "Prepare wallpaper for screen {:?}", screen);
+        logln!(options, "Prepare wallpaper for {:?}", screen);
 
         // Gather target-resolution and image-placement for particular screen
         let screen_resolution = Resolution {
@@ -269,7 +305,7 @@ fn render_wallpapers(
                 ),
             );
         } else {
-            log!(
+            logln!(
                 options,
                 "Reuse already rendered frames for {:?}",
                 target_resolution
@@ -343,7 +379,7 @@ fn render_frames(
 
         let target_resolution = wallpaper_on_screen.resolution.clone();
 
-        log!(
+        logln!(
             options,
             "Convert step {} (delay: {:?}, method: {:?}, width: {}, height: {}) to XImage (width: {}, height: {})",
             frame_index,
@@ -501,7 +537,7 @@ fn resize_raster(
             resize::Type::Mitchell
         };
 
-        log!(
+        logln!(
             options,
             "Resize raster from {}x{} to {}x{}",
             src_w,
@@ -543,7 +579,7 @@ fn do_animation(
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) {
-    log!(options, "Loop animation...");
+    logln!(options, "Loop animation...");
 
     let display = xcontext.display;
     let pixmap = xcontext.pixmap;
@@ -578,7 +614,7 @@ fn do_animation(
             // Assumption: All frames with same index have same delay
             delay = frames[i].delay;
 
-            //log!(options, "Put frame {} on screen {:?}", i, screen.placement);
+            //logln!(options, "Put frame {} on screen {:?}", i, screen.placement);
 
             unsafe {
                 x11::xshm::XShmPutImage(
@@ -612,7 +648,7 @@ fn do_animation(
         thread::sleep(delay);
     }
 
-    log!(options, "Stop animation-loop");
+    logln!(options, "Stop animation-loop");
 
     delete_atom(&xcontext, atom_root);
     delete_atom(&xcontext, atom_eroot);
@@ -620,7 +656,7 @@ fn do_animation(
 
 /// Clears reference and (shared-)-memory.
 fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Options>) {
-    log!(options, "Free images in shared memory");
+    logln!(options, "Free images in shared memory");
 
     for frames in wallpapers.frames_by_resolution.values_mut() {
         for i in 0..(frames.len()) {
@@ -633,10 +669,10 @@ fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Op
     }
 
     unsafe {
-        log!(options, "Free pixmap used for background");
+        logln!(options, "Free pixmap used for background");
         XFreePixmap(xcontext.display, xcontext.pixmap);
 
-        log!(options, "Reset background to solid black and clear window");
+        logln!(options, "Reset background to solid black and clear window");
         XSetWindowBackground(
             xcontext.display,
             xcontext.root,

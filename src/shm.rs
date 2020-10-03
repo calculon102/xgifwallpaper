@@ -12,11 +12,7 @@ use x11::xshm;
 
 /// Returns `true` if X-Server supports xshm.
 pub fn is_xshm_available(display: *mut Display) -> bool {
-    let status = unsafe { xshm::XShmQueryExtension(display) };
-
-    unsafe { XCloseDisplay(display) };
-
-    status == True
+    unsafe { xshm::XShmQueryExtension(display) == True }
 }
 
 /// Creates info-structure for the shared-memory-segment. This structure must
