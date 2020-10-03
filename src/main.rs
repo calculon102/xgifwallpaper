@@ -46,7 +46,7 @@ macro_rules! log {
     };
 }
 
-macro_rules! logln {
+macro_rules! lognl {
     ($is_verbose:ident, $message:expr) => {
         if $is_verbose.verbose {
             println!($message);
@@ -145,7 +145,7 @@ fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
         std::process::exit(EXIT_XSHM_UNSUPPORTED);
     }
 
-    logln!(opts, "connection-number={:?}", unsafe {
+    lognl!(opts, "connection-number={:?}", unsafe {
         XConnectionNumber(display)
     });
 
@@ -155,7 +155,7 @@ fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
     let gc = unsafe { XDefaultGC(display, screen) };
     let root = unsafe { XRootWindow(display, screen) };
 
-    logln!(
+    lognl!(
         opts,
         "DefaultScreen={:?}, DefaultGC={:?}, RootWindow={:?}",
         screen,
@@ -210,7 +210,7 @@ fn parse_color(xcontext: &XContext, opts: Arc<Options>) -> Box<XColor> {
 
     unsafe { XAllocColor(xcontext.display, cmap, xcolor_ptr) };
 
-    logln!(opts, "{:?}", xcolor);
+    lognl!(opts, "{:?}", xcolor);
 
     Box::new(xcolor)
 }
@@ -284,7 +284,7 @@ fn render_wallpapers(
     let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
 
     for screen in xscreens.screens {
-        logln!(options, "Prepare wallpaper for {:?}", screen);
+        lognl!(options, "Prepare wallpaper for {:?}", screen);
 
         // Gather target-resolution and image-placement for particular screen
         let screen_resolution = Resolution {
@@ -316,7 +316,7 @@ fn render_wallpapers(
                 ),
             );
         } else {
-            logln!(
+            lognl!(
                 options,
                 "Reuse already rendered frames for {:?}",
                 target_resolution
@@ -390,7 +390,7 @@ fn render_frames(
 
         let target_resolution = wallpaper_on_screen.resolution.clone();
 
-        logln!(
+        lognl!(
             options,
             "Convert step {} (delay: {:?}, method: {:?}, width: {}, height: {}) to XImage (width: {}, height: {})",
             frame_index,
@@ -548,7 +548,7 @@ fn resize_raster(
             resize::Type::Mitchell
         };
 
-        logln!(
+        lognl!(
             options,
             "Resize raster from {}x{} to {}x{}",
             src_w,
@@ -590,7 +590,7 @@ fn do_animation(
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) {
-    logln!(options, "Loop animation...");
+    lognl!(options, "Loop animation...");
 
     let display = xcontext.display;
     let pixmap = xcontext.pixmap;
@@ -625,7 +625,7 @@ fn do_animation(
             // Assumption: All frames with same index have same delay
             delay = frames[i].delay;
 
-            //logln!(options, "Put frame {} on screen {:?}", i, screen.placement);
+            //lognl!(options, "Put frame {} on screen {:?}", i, screen.placement);
 
             unsafe {
                 x11::xshm::XShmPutImage(
@@ -659,7 +659,7 @@ fn do_animation(
         thread::sleep(delay);
     }
 
-    logln!(options, "Stop animation-loop");
+    lognl!(options, "Stop animation-loop");
 
     delete_atom(&xcontext, atom_root);
     delete_atom(&xcontext, atom_eroot);
@@ -667,7 +667,7 @@ fn do_animation(
 
 /// Clears reference and (shared-)-memory.
 fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Options>) {
-    logln!(options, "Free images in shared memory");
+    lognl!(options, "Free images in shared memory");
 
     for frames in wallpapers.frames_by_resolution.values_mut() {
         for i in 0..(frames.len()) {
@@ -680,10 +680,10 @@ fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Op
     }
 
     unsafe {
-        logln!(options, "Free pixmap used for background");
+        lognl!(options, "Free pixmap used for background");
         XFreePixmap(xcontext.display, xcontext.pixmap);
 
-        logln!(options, "Reset background to solid black and clear window");
+        lognl!(options, "Reset background to solid black and clear window");
         XSetWindowBackground(
             xcontext.display,
             xcontext.root,
