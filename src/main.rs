@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 mod options;
 mod position;
 mod screens;
@@ -31,34 +34,6 @@ const EXIT_UNKOWN_COLOR: i32 = 102;
 const EXIT_INVALID_FILE: i32 = 103;
 
 const VERSION: &str = "0.2.0";
-
-macro_rules! log {
-    ($is_verbose:ident, $message:expr) => {
-        if $is_verbose.verbose {
-            print!($message);
-        }
-    };
-
-    ($is_verbose:ident, $message:expr, $($args:expr),*) => {
-        if $is_verbose.verbose {
-            print!($message $(,$args)*);
-        }
-    };
-}
-
-macro_rules! lognl {
-    ($is_verbose:ident, $message:expr) => {
-        if $is_verbose.verbose {
-            println!($message);
-        }
-    };
-
-    ($is_verbose:ident, $message:expr, $($args:expr),*) => {
-        if $is_verbose.verbose {
-            println!($message $(,$args)*);
-        }
-    };
-}
 
 /// Screens to render wallpapers on, with needed resolution. And the pre-
 /// rendered frames in a seperate map.
@@ -145,7 +120,7 @@ fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
         std::process::exit(EXIT_XSHM_UNSUPPORTED);
     }
 
-    lognl!(opts, "connection-number={:?}", unsafe {
+    logln!(opts, "connection-number={:?}", unsafe {
         XConnectionNumber(display)
     });
 
@@ -155,7 +130,7 @@ fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
     let gc = unsafe { XDefaultGC(display, screen) };
     let root = unsafe { XRootWindow(display, screen) };
 
-    lognl!(
+    logln!(
         opts,
         "DefaultScreen={:?}, DefaultGC={:?}, RootWindow={:?}",
         screen,
@@ -210,7 +185,7 @@ fn parse_color(xcontext: &XContext, opts: Arc<Options>) -> Box<XColor> {
 
     unsafe { XAllocColor(xcontext.display, cmap, xcolor_ptr) };
 
-    lognl!(opts, "{:?}", xcolor);
+    logln!(opts, "{:?}", xcolor);
 
     Box::new(xcolor)
 }
@@ -284,7 +259,7 @@ fn render_wallpapers(
     let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
 
     for screen in xscreens.screens {
-        lognl!(options, "Prepare wallpaper for {:?}", screen);
+        logln!(options, "Prepare wallpaper for {:?}", screen);
 
         // Gather target-resolution and image-placement for particular screen
         let screen_resolution = Resolution {
@@ -316,7 +291,7 @@ fn render_wallpapers(
                 ),
             );
         } else {
-            lognl!(
+            logln!(
                 options,
                 "Reuse already rendered frames for {:?}",
                 target_resolution
@@ -390,7 +365,7 @@ fn render_frames(
 
         let target_resolution = wallpaper_on_screen.resolution.clone();
 
-        lognl!(
+        logln!(
             options,
             "Convert step {} (delay: {:?}, method: {:?}, width: {}, height: {}) to XImage (width: {}, height: {})",
             frame_index,
@@ -548,7 +523,7 @@ fn resize_raster(
             resize::Type::Mitchell
         };
 
-        lognl!(
+        logln!(
             options,
             "Resize raster from {}x{} to {}x{}",
             src_w,
@@ -590,7 +565,7 @@ fn do_animation(
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) {
-    lognl!(options, "Loop animation...");
+    logln!(options, "Loop animation...");
 
     let display = xcontext.display;
     let pixmap = xcontext.pixmap;
@@ -625,7 +600,7 @@ fn do_animation(
             // Assumption: All frames with same index have same delay
             delay = frames[i].delay;
 
-            //lognl!(options, "Put frame {} on screen {:?}", i, screen.placement);
+            //logln!(options, "Put frame {} on screen {:?}", i, screen.placement);
 
             unsafe {
                 x11::xshm::XShmPutImage(
@@ -659,7 +634,7 @@ fn do_animation(
         thread::sleep(delay);
     }
 
-    lognl!(options, "Stop animation-loop");
+    logln!(options, "Stop animation-loop");
 
     delete_atom(&xcontext, atom_root);
     delete_atom(&xcontext, atom_eroot);
@@ -667,7 +642,7 @@ fn do_animation(
 
 /// Clears reference and (shared-)-memory.
 fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Options>) {
-    lognl!(options, "Free images in shared memory");
+    logln!(options, "Free images in shared memory");
 
     for frames in wallpapers.frames_by_resolution.values_mut() {
         for i in 0..(frames.len()) {
@@ -680,10 +655,10 @@ fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Op
     }
 
     unsafe {
-        lognl!(options, "Free pixmap used for background");
+        logln!(options, "Free pixmap used for background");
         XFreePixmap(xcontext.display, xcontext.pixmap);
 
-        lognl!(options, "Reset background to solid black and clear window");
+        logln!(options, "Reset background to solid black and clear window");
         XSetWindowBackground(
             xcontext.display,
             xcontext.root,
