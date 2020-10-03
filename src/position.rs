@@ -1,6 +1,6 @@
 //! Compute position and resolution of images according to screen-resolutions
 //! and options for placement and scaling.
-use crate::screen_info::*;
+use crate::screens::*;
 
 /// Alignments of 2-dimensional rectangles.
 pub enum Alignment {

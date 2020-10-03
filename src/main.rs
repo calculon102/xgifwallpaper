@@ -1,6 +1,6 @@
 mod options;
 mod position;
-mod screen_info;
+mod screens;
 mod shm;
 mod xatoms;
 
@@ -21,7 +21,7 @@ use x11::xlib::*;
 
 use options::Options;
 use position::*;
-use screen_info::*;
+use screens::*;
 use shm::*;
 use xatoms::*;
 
@@ -55,7 +55,7 @@ struct Wallpapers {
 struct WallpaperOnScreen {
     placement: ImagePlacement,
     resolution: Resolution,
-    _screen: screen_info::Screen, // TODO Check if useful at some time
+    _screen: screens::Screen, // TODO Check if useful at some time
 }
 
 /// Combines x-structs, raster- and metadata for a singe frame.
@@ -224,12 +224,12 @@ fn render_wallpapers(
     };
 
     // Build wallpapers by screen
-    let screen_info = get_screen_info();
+    let xscreens = Screens::query_x_screens();
 
     let mut screens: Vec<WallpaperOnScreen> = Vec::new();
     let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
 
-    for screen in screen_info.screens {
+    for screen in xscreens.screens {
         log!(options, "Prepare wallpaper for screen {:?}", screen);
 
         // Gather target-resolution and image-placement for particular screen
