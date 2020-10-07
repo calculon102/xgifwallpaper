@@ -128,7 +128,11 @@ fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
 
     let screen = unsafe { XDefaultScreen(display) };
     let gc = unsafe { XDefaultGC(display, screen) };
-    let root = unsafe { XRootWindow(display, screen) };
+    let root = if opts.window_id > 0 {
+        opts.window_id
+    } else {
+        unsafe { XRootWindow(display, screen) }
+    };
 
     logln!(
         opts,

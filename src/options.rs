@@ -11,6 +11,7 @@ const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
 const ARG_SCALE: &str = "SCALE";
 const ARG_VERBOSE: &str = "VERBOSE";
+const ARG_WINDOW_ID: &str = "WINDOW_ID";
 
 const DEFAULT_DELAY: u16 = 10;
 const DEFAULT_DELAY_STR: &str = "10";
@@ -22,6 +23,7 @@ pub struct Options {
     pub path_to_gif: String,
     pub scaling: Scaling,
     pub verbose: bool,
+    pub window_id: u64,
 }
 
 impl Options {
@@ -75,6 +77,13 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
                 .default_value("NONE")
                 .help("Scale GIF-frames, relative to available screen."),
         )
+        .arg(
+            Arg::with_name(ARG_WINDOW_ID)
+                .short("wid")
+                .long("window-id")
+                .takes_value(true)
+                .help("ID of window to paint wallpaper on, insted of the root window."),
+        )
 }
 
 /// Parse arguments from command line.
@@ -95,12 +104,26 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
         &_ => Scaling::NONE, // Cannot happen, due to guarantee of args
     };
 
+    let window_id = if args.is_present(ARG_WINDOW_ID) {
+        value_t!(args, ARG_WINDOW_ID, u64).unwrap_or_else(|_e| {
+            eprintln!(
+                "Use a value between {} and {} as window_id",
+                u64::MIN,
+                u64::MAX
+            );
+            0u64
+        })
+    } else {
+        0u64
+    };
+
     Options {
         background_color: args.value_of(ARG_COLOR).unwrap().to_owned(),
         default_delay: delay,
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap().to_owned(),
         scaling,
         verbose: args.is_present(ARG_VERBOSE),
+        window_id,
     }
 }
 
