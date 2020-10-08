@@ -24,23 +24,19 @@ Currently known to work with
 * [Cinnamon](https://github.com/linuxmint/Cinnamon)
 * [dwm](https://dwm.suckless.org)
 * [i3](https://i3wm.org)
+* [Openbox](https://github.com/danakj/openbox)
 * [xmonad](https://xmonad.org)
 
-Known to not work on
-
-* [Gnome3](https://www.gnome.org/gnome-3/) /
-[Mutter](https://gitlab.gnome.org/GNOME/mutter/)
-* [KDE Plasma 5](https://kde.org/plasma-desktop)
-
-Status unknown
+Known not work with 
 
 * [Budgie](https://github.com/solus-project/budgie-desktop)
 * [Englightenment](https://www.enlightenment.org)
-* [Mate](https://mate-desktop.org)
+* [Gnome3](https://www.gnome.org/gnome-3) /
+[Mutter](https://gitlab.gnome.org/GNOME/mutter)
+* [KDE Plasma 5](https://kde.org/plasma-desktop)
 * [Lxde](http://www.lxde.org)
-* [Lxqt](https://lxqt.github.io)
+* [Mate](https://mate-desktop.org)
 * [Xfce](https://www.xfce.org)
-* ???
 
 Every feedback and testing is appreciated!
 
