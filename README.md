@@ -1,4 +1,6 @@
-# xgifwallpaper
+[![aur.archlinux.org](https://img.shields.io/aur/version/xgifwallpaper)](https://aur.archlinux.org/packages/xgifwallpaper)
+
+# `xgifwallpaper`
 
 Use an animated GIF as wallpaper on X11-systems.
 
