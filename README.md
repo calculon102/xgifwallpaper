@@ -1,10 +1,8 @@
-# xgifwallpaper
+[![aur.archlinux.org](https://img.shields.io/aur/version/xgifwallpaper)](https://aur.archlinux.org/packages/xgifwallpaper)
+
+# `xgifwallpaper`
 
 Use an animated GIF as wallpaper on X11-systems.
-
-`xgifwallpaper` draws on the root window. On window-managers, where the root
-window is hidden, there will be no visible effect. Examples are KDE Plasma and
-Gnome.
 
 By using shared memory between X11 client and server, this is not as 
 performance-inefficient as it may seem at first. Nonetheless, expect some
@@ -13,7 +11,36 @@ memory to be used for bigger GIFs with a lot of frames.
 Due to using the shared memory extension of X11, this program will not work
 in X11 sessions over the network.
 
-`xgifwallpaper` will use all available screens.
+In its current state, `xgifwallpaper` will always use all available screens.
+
+## Compatibility
+
+`xgifwallpaper` will work with all window managers, that expose the root
+window of X. Also, X compositors supporting
+[pseudo-transparency](https://en.wikipedia.org/wiki/Pseudo-transparency#XROOTPMAP_ID_and_ESETROOT_PMAP_ID_properties),
+should work with `xgifwallpaper`, like `xcompmgr` or `picom`.
+
+Currently known to work with
+
+* [bspwm](https://github.com/baskerville/bspwm)
+* [Cinnamon](https://github.com/linuxmint/Cinnamon)
+* [dwm](https://dwm.suckless.org)
+* [i3](https://i3wm.org)
+* [Openbox](https://github.com/danakj/openbox)
+* [xmonad](https://xmonad.org)
+
+Known not work with 
+
+* [Budgie](https://github.com/solus-project/budgie-desktop)
+* [Englightenment](https://www.enlightenment.org)
+* [Gnome3](https://www.gnome.org/gnome-3) /
+[Mutter](https://gitlab.gnome.org/GNOME/mutter)
+* [KDE Plasma 5](https://kde.org/plasma-desktop)
+* [Lxde](http://www.lxde.org)
+* [Mate](https://mate-desktop.org)
+* [Xfce](https://www.xfce.org)
+
+Every feedback and testing is appreciated!
 
 ## Usage
 
