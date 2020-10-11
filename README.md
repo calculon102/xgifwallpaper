@@ -26,6 +26,11 @@ Currently known to work with
 * [Cinnamon](https://github.com/linuxmint/Cinnamon)
 * [dwm](https://dwm.suckless.org)
 * [i3](https://i3wm.org)
+* [Lxde](http://www.lxde.org) - Use -w option with the first windows ID from 
+atom `_NET_CLIENT_LIST_STACKING(WINDOW)` of root window. See examples.
+
+* [Mate](https://mate-desktop.org) - Use -w with `CAJA_DESKTOP_WINDOW_ID`
+* [Xfce](https://www.xfce.org) - Use -w with `XFCE_DESKTOP_WINDOW_ID`
 * [Openbox](https://github.com/danakj/openbox)
 * [xmonad](https://xmonad.org)
 
@@ -36,9 +41,6 @@ Known not work with
 * [Gnome3](https://www.gnome.org/gnome-3) /
 [Mutter](https://gitlab.gnome.org/GNOME/mutter)
 * [KDE Plasma 5](https://kde.org/plasma-desktop)
-* [Lxde](http://www.lxde.org)
-* [Mate](https://mate-desktop.org)
-* [Xfce](https://www.xfce.org)
 
 Every feedback and testing is appreciated!
 
@@ -46,7 +48,7 @@ Every feedback and testing is appreciated!
 
 See output of `--help`:
 
-```
+```console
 USAGE:
     xgifwallpaper [FLAGS] [OPTIONS] <PATH_TO_GIF>
 
@@ -88,6 +90,24 @@ image. Also, set background-color to white, override default-delay with 30
 centiseconds and be verbose:
 
 `xgifwallpaper -v -b white -d 30 -s MAX mybackground.gif`
+
+Use window, referenced by specified atom of root-window, to draw wallpaper,
+instead of the root window itself:
+
+```bash
+# Use with Mate
+xgifwallpaper -w CAJA_DESKTOP_WINDOW_ID my_wallpaper.gif
+
+# Use with XFCE
+xgifwallpaper -w XFCE_DESKTOP_WINDOW_ID my_wallpaper.gif
+```
+
+Use background the first window in stacking order to draw wallpaper, instead of
+the root window. To be used with `Lxde`:
+
+```bash   
+xgifwallpaper -w $(xprop -root | awk '_NET_CLIENT_LIST_STACKING\(WINDOW\)/{print $5}' | tr -d m) mybackground.gif
+```
 
 ## Install
 

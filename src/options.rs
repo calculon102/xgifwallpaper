@@ -77,6 +77,7 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
                 .default_value("NONE")
                 .help("Scale GIF-frames, relative to available screen."),
         )
+        // TODO Interpret also as hex or atom-name with window-id
         .arg(
             Arg::with_name(ARG_WINDOW_ID)
                 .short("wid")
