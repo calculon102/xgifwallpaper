@@ -6,15 +6,15 @@ mod position;
 mod screens;
 mod shm;
 mod xatoms;
+mod xcontext;
 
 use pix::rgb::Rgba8;
 
 use std::collections::HashMap;
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::fs::File;
 use std::io::BufReader;
-use std::os::raw::{c_char, c_int, c_uint, c_ulong};
-use std::ptr;
+use std::os::raw::{c_char, c_uint};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -27,6 +27,7 @@ use position::*;
 use screens::*;
 use shm::*;
 use xatoms::*;
+use xcontext::XContext;
 
 const EXIT_NO_XDISPLAY: i32 = 100;
 const EXIT_XSHM_UNSUPPORTED: i32 = 101;
@@ -57,16 +58,6 @@ struct Frame {
     xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
 }
 
-/// X11-specific control-data and references.
-#[derive(Debug)]
-pub struct XContext {
-    display: *mut x11::xlib::Display,
-    screen: c_int,
-    root: c_ulong,
-    gc: GC,
-    pixmap: Pixmap,
-}
-
 /// Application entry-point
 fn main() {
     let options = Arc::new(Options::from_args());
@@ -74,14 +65,9 @@ fn main() {
 
     init_sigint_handler(options.clone(), running.clone());
 
-    // Pixmap of struct must be set later, is mut therefore
-    let mut xcontext = create_xcontext(options.clone());
+    let xcontext = Box::new(XContext::new(options.clone()));
 
-    let color = parse_color(&xcontext, options.clone());
-
-    let mut wallpapers = render_wallpapers(&xcontext, &color, options.clone(), running.clone());
-
-    xcontext.pixmap = prepare_pixmap(&xcontext, &color);
+    let mut wallpapers = render_wallpapers(&xcontext, options.clone(), running.clone());
 
     clear_background(&xcontext, options.clone());
 
@@ -104,125 +90,10 @@ fn init_sigint_handler<'a>(options: Arc<Options>, running: Arc<AtomicBool>) {
     .expect("Error setting Ctrl-C handler");
 }
 
-/// Establish connection and context to the X-server
-fn create_xcontext(opts: Arc<Options>) -> Box<XContext> {
-    let display = unsafe { XOpenDisplay(ptr::null()) };
-
-    log!(opts, "Open X-display: ");
-
-    if display.is_null() {
-        eprintln!("Failed to open display. Is X running in your session?");
-        std::process::exit(EXIT_NO_XDISPLAY);
-    }
-
-    if !is_xshm_available(display) {
-        eprintln!("The X server in use does not support the shared memory extension (xshm).");
-        std::process::exit(EXIT_XSHM_UNSUPPORTED);
-    }
-
-    logln!(opts, "connection-number={:?}", unsafe {
-        XConnectionNumber(display)
-    });
-
-    log!(opts, "Query context from X server: ");
-
-    let screen = unsafe { XDefaultScreen(display) };
-    let gc = unsafe { XDefaultGC(display, screen) };
-    let root = if opts.window_id > 0 {
-        opts.window_id
-    } else {
-        unsafe { XRootWindow(display, screen) }
-    };
-
-    logln!(
-        opts,
-        "DefaultScreen={:?}, DefaultGC={:?}, RootWindow={:?}",
-        screen,
-        gc,
-        root
-    );
-
-    Box::new(XContext {
-        display,
-        screen,
-        gc,
-        root,
-        pixmap: 0,
-    })
-}
-
-/// Parse string as X11-color.
-fn parse_color(xcontext: &XContext, opts: Arc<Options>) -> Box<XColor> {
-    let mut xcolor: XColor = XColor {
-        pixel: 0,
-        red: 0,
-        green: 0,
-        blue: 0,
-        flags: 0,
-        pad: 0,
-    };
-
-    let xcolor_ptr: *mut XColor = &mut xcolor;
-    let color_str = opts.background_color.as_str();
-    let cmap = unsafe { XDefaultColormap(xcontext.display, xcontext.screen) };
-
-    log!(opts, "Parse \"{}\" as X11-color: ", color_str);
-
-    let result = unsafe {
-        XParseColor(
-            xcontext.display,
-            cmap,
-            CString::new(color_str).unwrap().as_ptr(),
-            xcolor_ptr,
-        )
-    };
-
-    if result == 0 {
-        unsafe { XCloseDisplay(xcontext.display) };
-
-        eprintln!(
-            "Unable to parse {} as X11-color. Try hex-color format: #RRGGBB.",
-            color_str
-        );
-        std::process::exit(EXIT_UNKOWN_COLOR);
-    }
-
-    unsafe { XAllocColor(xcontext.display, cmap, xcolor_ptr) };
-
-    logln!(opts, "{:?}", xcolor);
-
-    Box::new(xcolor)
-}
-
-/// Create and prepare the pixmap, where the wallpaper is drawn onto.
-fn prepare_pixmap(xcontext: &Box<XContext>, color: &Box<XColor>) -> Pixmap {
-    let dsp = xcontext.display;
-    let scr = xcontext.screen;
-    let gc = xcontext.gc;
-
-    unsafe {
-        let dsp_width = XDisplayWidth(dsp, scr) as c_uint;
-        let dsp_height = XDisplayHeight(dsp, scr) as c_uint;
-        let depth = XDefaultDepth(dsp, scr) as c_uint;
-
-        let pixmap = XCreatePixmap(dsp, xcontext.root, dsp_width, dsp_height, depth);
-
-        XSetForeground(dsp, gc, color.pixel);
-        XSetBackground(dsp, gc, color.pixel);
-        XSetFillStyle(dsp, gc, FillSolid);
-
-        XDrawRectangle(dsp, pixmap, gc, 0, 0, dsp_width, dsp_height);
-        XFillRectangle(dsp, pixmap, gc, 0, 0, dsp_width, dsp_height);
-
-        pixmap
-    }
-}
-
 /// Pre-render wallpaper-frames for all needed resolutions, determined by
 /// actual screens, options and image-data
 fn render_wallpapers(
     xcontext: &Box<XContext>,
-    background_color: &Box<XColor>,
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Wallpapers {
@@ -286,7 +157,6 @@ fn render_wallpapers(
                 target_resolution,
                 render_frames(
                     xcontext,
-                    background_color,
                     &wallpaper_on_screen,
                     steps.by_ref(),
                     &methods,
@@ -340,7 +210,6 @@ fn gather_disposal_methods(path_to_gif: &str) -> Vec<gift::block::DisposalMethod
 /// Render GIF-frames as bitmaps for a specific screen.
 fn render_frames(
     xcontext: &Box<XContext>,
-    color: &Box<XColor>,
     wallpaper_on_screen: &WallpaperOnScreen,
     steps: &mut gift::decode::Steps<BufReader<File>>,
     methods: &Vec<gift::block::DisposalMethod>,
@@ -410,6 +279,7 @@ fn render_frames(
 
         let s = 4;
 
+        let color = xcontext.background_color;
         let background_rgba = [
             (color.red / 256) as i8,
             (color.green / 256) as i8,
