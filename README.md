@@ -28,10 +28,10 @@ Currently known to work with
 * [i3](https://i3wm.org)
 * [Lxde](http://www.lxde.org) - Use -w option with the first windows ID from 
 atom `_NET_CLIENT_LIST_STACKING(WINDOW)` of root window. See examples.
-
 * [Mate](https://mate-desktop.org) - Use -w with `CAJA_DESKTOP_WINDOW_ID`
-* [Xfce](https://www.xfce.org) - Use -w with `XFCE_DESKTOP_WINDOW_ID`
 * [Openbox](https://github.com/danakj/openbox)
+* [qtile](http://www.qtile.org/)
+* [Xfce](https://www.xfce.org) - Use -w with `XFCE_DESKTOP_WINDOW`
 * [xmonad](https://xmonad.org)
 
 Known not work with 
@@ -96,17 +96,17 @@ instead of the root window itself:
 
 ```bash
 # Use with Mate
-xgifwallpaper -w CAJA_DESKTOP_WINDOW_ID my_wallpaper.gif
+xgifwallpaper -w 'CAJA_DESKTOP_WINDOW_ID' my_wallpaper.gif
 
 # Use with XFCE
-xgifwallpaper -w XFCE_DESKTOP_WINDOW_ID my_wallpaper.gif
+xgifwallpaper -w 'XFCE_DESKTOP_WINDOW' my_wallpaper.gif
 ```
 
 Use background the first window in stacking order to draw wallpaper, instead of
 the root window. To be used with `Lxde`:
 
 ```bash   
-xgifwallpaper -w $(xprop -root | awk '_NET_CLIENT_LIST_STACKING\(WINDOW\)/{print $5}' | tr -d m) mybackground.gif
+xgifwallpaper -w $(xprop -root | awk '/_NET_CLIENT_LIST_STACKING\(WINDOW\)/{print $5}' | tr -d ,) mybackground.gif
 ```
 
 ## Install
@@ -156,7 +156,7 @@ Rust is not included, as I would suggest installing it the way described above.
 On *Ubuntu*-based-systems, use
 
 ```console
-$ sudo apt install libx11-dev libxinerama-dev libxshm-dev
+$ sudo apt install libx11-dev libxinerama-dev libxext-dev
 ```
 
 `git`, `rust`, `libc` and a C-compiler-suite need to be installed.

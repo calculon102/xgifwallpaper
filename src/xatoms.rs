@@ -8,23 +8,25 @@
 use crate::Options;
 use crate::XContext;
 
-use std::ffi::{c_void, CString};
+use std::ffi::CString;
 
-use std::os::raw::{c_char, c_int, c_ulong};
+use std::os::raw::{c_char, c_int, c_uchar, c_ulong};
 use std::sync::Arc;
 
 use x11::xlib::{
-    AnyPropertyType, Display, False, Pixmap, PropModeReplace, True, XChangeProperty, XFree,
-    XGetWindowProperty, XInternAtom, XKillClient, XA_PIXMAP,
+    Display, False, Pixmap, PropModeReplace, True, Window, XChangeProperty, XGetWindowProperty,
+    XInternAtom, XKillClient, XA_PIXMAP, XA_WINDOW,
 };
 
 const ATOM_XROOTPMAP_ID: &str = "_XROOTPMAP_ID";
 const ATOM_ESETROOT_PMAP_ID: &str = "ESETROOT_PMAP_ID";
 
+/// Convenience: Get or create atom-id with name `_XROOTPMAP_ID`.
 pub fn get_root_pixmap_atom(display: *mut Display) -> c_ulong {
     get_atom(display, get_atom_name(ATOM_XROOTPMAP_ID).as_ptr(), False)
 }
 
+/// Convenience: Get or create atom-id with name `ESETROOT_PMAP_ID`.
 pub fn get_eroot_pixmap_atom(display: *mut Display) -> c_ulong {
     get_atom(
         display,
@@ -37,10 +39,13 @@ fn get_atom_name(name: &str) -> CString {
     CString::new(name).unwrap()
 }
 
-fn get_atom(display: *mut Display, name: *const c_char, only_if_exists: c_int) -> c_ulong {
+/// Gets the atom id. May create the atom on the server. If that fails or the
+/// atom does not exist and should not be created, may return `xlib::False`.
+pub fn get_atom(display: *mut Display, name: *const c_char, only_if_exists: c_int) -> c_ulong {
     unsafe { XInternAtom(display, name, only_if_exists) }
 }
 
+/// Convenience: Remove the pixmap related atoms on the root window.
 pub fn remove_root_pixmap_atoms(xcontext: &Box<XContext>, options: Arc<Options>) -> bool {
     let mut removed_atoms = false;
 
@@ -67,9 +72,74 @@ pub fn remove_root_pixmap_atoms(xcontext: &Box<XContext>, options: Arc<Options>)
 }
 
 fn remove_root_pixmap_atom(xcontext: &Box<XContext>, atom: c_ulong, options: Arc<Options>) -> bool {
-    // Better or more declarative way to create a mutable char-pointer?
-    let data = CString::new("").unwrap();
-    let mut data_ptr: *mut u8 = data.as_ptr() as *mut u8;
+    let pixmap_result = query_window_propery_as_pixmap_id(xcontext.display, xcontext.root, atom);
+
+    if pixmap_result.is_ok() {
+        let pixmap = pixmap_result.unwrap();
+
+        if xcontext.pixmap != pixmap {
+            if options.verbose {
+                println!("Kill client responsible for _XROOTPMAP_ID {}", pixmap);
+            }
+
+            delete_atom(&xcontext, atom);
+            unsafe { XKillClient(xcontext.display, pixmap) };
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn query_window_propery_as_pixmap_id(
+    display: *mut Display,
+    window: c_ulong,
+    atom: c_ulong,
+) -> Result<Pixmap, String> {
+    let (_, ptype, _, _, _, data_ptr) = query_window_propery(display, window, atom, XA_PIXMAP);
+
+    if ptype != XA_PIXMAP {
+        return Err("Given atom is not a pixmap-id".to_string());
+    }
+
+    let pixmap = unsafe { Box::from_raw(data_ptr as *mut x11::xlib::Pixmap) };
+
+    Ok(*pixmap)
+}
+
+pub fn query_window_propery_as_window_id(
+    display: *mut Display,
+    window: c_ulong,
+    atom: c_ulong,
+) -> Result<Window, String> {
+    let (_, ptype, _, _, _, data_ptr) = query_window_propery(display, window, atom, XA_WINDOW);
+
+    if ptype != XA_WINDOW {
+        return Err("Given atom is not a window-id".to_string());
+    }
+
+    let window = unsafe { Box::from_raw(data_ptr as *mut Window) };
+
+    Ok(*window)
+}
+
+/// Queries the specified atom, if existing.
+/// Return tuple specifies
+/// * result
+/// * ptype
+/// * format
+/// * length
+/// * pointer to data
+///
+/// As specified in the X-manual:
+/// https://www.x.org/releases/X11R7.7/doc/man/man3/XGetWindowProperty.3.xhtml
+fn query_window_propery(
+    display: *mut Display,
+    window: c_ulong,
+    atom: c_ulong,
+    property_type: c_ulong,
+) -> (c_int, c_ulong, c_int, c_ulong, c_ulong, *mut c_uchar) {
+    let mut ptr = std::mem::MaybeUninit::<*mut c_uchar>::uninit();
 
     let mut ptype = 0 as u64;
     let mut format = 0 as i32;
@@ -78,40 +148,24 @@ fn remove_root_pixmap_atom(xcontext: &Box<XContext>, atom: c_ulong, options: Arc
 
     let result = unsafe {
         XGetWindowProperty(
-            xcontext.display,
-            xcontext.root,
+            display,
+            window,
             atom,
             0,
             1,
             False,
-            AnyPropertyType as u64,
+            property_type,
             &mut ptype,
             &mut format,
             &mut length,
             &mut after,
-            &mut data_ptr,
+            ptr.as_mut_ptr(),
         )
     };
 
-    if result != 0 && ptype == XA_PIXMAP {
-        let root_pixmap_id = unsafe { *(data_ptr as *const Pixmap) };
-
-        if xcontext.pixmap != root_pixmap_id {
-            if options.verbose {
-                println!(
-                    "Kill client responsible for _XROOTPMAP_ID {}",
-                    root_pixmap_id
-                );
-            }
-
-            delete_atom(&xcontext, atom);
-            unsafe { XKillClient(xcontext.display, root_pixmap_id) };
-            unsafe { XFree(data_ptr as *mut c_void) };
-            return true;
-        }
-    }
-
-    false
+    (result, ptype, format, length, after, unsafe {
+        ptr.assume_init()
+    })
 }
 
 pub fn delete_atom(xcontext: &Box<XContext>, atom: c_ulong) -> bool {

@@ -29,9 +29,6 @@ use shm::*;
 use xatoms::*;
 use xcontext::XContext;
 
-const EXIT_NO_XDISPLAY: i32 = 100;
-const EXIT_XSHM_UNSUPPORTED: i32 = 101;
-const EXIT_UNKOWN_COLOR: i32 = 102;
 const EXIT_INVALID_FILE: i32 = 103;
 
 const VERSION: &str = "0.3.0-alpha";
@@ -65,7 +62,13 @@ fn main() {
 
     init_sigint_handler(options.clone(), running.clone());
 
-    let xcontext = Box::new(XContext::new(options.clone()));
+    let xcontext = match XContext::new(options.clone()) {
+        Ok(xcontext) => Box::new(xcontext),
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(e.code);
+        }
+    };
 
     let mut wallpapers = render_wallpapers(&xcontext, options.clone(), running.clone());
 

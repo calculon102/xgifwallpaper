@@ -18,12 +18,16 @@ const DEFAULT_DELAY_STR: &str = "10";
 
 /// Runtime options as given by the caller of this program.
 pub struct Options {
+    /// X11-compilant color-name
     pub background_color: String,
     pub default_delay: u16,
     pub path_to_gif: String,
+    /// Scaling-method to use
     pub scaling: Scaling,
     pub verbose: bool,
-    pub window_id: u64,
+    /// Window-Id as decimal or hex-number (0x-prefix) or name of atom with Id
+    /// to use.
+    pub window_id: String,
 }
 
 impl Options {
@@ -77,13 +81,16 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
                 .default_value("NONE")
                 .help("Scale GIF-frames, relative to available screen."),
         )
-        // TODO Interpret also as hex or atom-name with window-id
         .arg(
             Arg::with_name(ARG_WINDOW_ID)
-                .short("wid")
+                .help(
+                    "ID of window to animate wallpaper on its background, 
+                    insted of the root window. As decimal, hex or name of 
+                    root-atom.",
+                )
                 .long("window-id")
-                .takes_value(true)
-                .help("ID of window to paint wallpaper on, insted of the root window."),
+                .short("w")
+                .takes_value(true),
         )
 }
 
@@ -105,26 +112,13 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
         &_ => Scaling::NONE, // Cannot happen, due to guarantee of args
     };
 
-    let window_id = if args.is_present(ARG_WINDOW_ID) {
-        value_t!(args, ARG_WINDOW_ID, u64).unwrap_or_else(|_e| {
-            eprintln!(
-                "Use a value between {} and {} as window_id",
-                u64::MIN,
-                u64::MAX
-            );
-            0u64
-        })
-    } else {
-        0u64
-    };
-
     Options {
         background_color: args.value_of(ARG_COLOR).unwrap().to_owned(),
         default_delay: delay,
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap().to_owned(),
         scaling,
         verbose: args.is_present(ARG_VERBOSE),
-        window_id,
+        window_id: args.value_of(ARG_WINDOW_ID).unwrap_or("").to_string(),
     }
 }
 
@@ -202,6 +196,18 @@ mod tests {
     fn when_argument_scale_is_max_then_match_enum() {
         let options = Options::_from_params(_create_params(vec!["-s", "MAX"]));
         assert_eq!(options.scaling, Scaling::MAX);
+    }
+
+    #[test]
+    fn when_argument_window_id_is_given_then_use_it() {
+        let options = Options::_from_params(_create_params(vec!["-w", "foobar"]));
+        assert_eq!(options.window_id, "foobar");
+    }
+
+    #[test]
+    fn when_argument_window_id_is_not_given_then_option_is_empty_string() {
+        let options = Options::_from_params(_create_params(vec![]));
+        assert_eq!(options.window_id, "");
     }
 
     fn _create_params(custom_params: Vec<&str>) -> Vec<&str> {
