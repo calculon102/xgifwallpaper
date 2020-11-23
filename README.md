@@ -60,8 +60,10 @@ FLAGS:
 OPTIONS:
     -b, --background-color <X11-color>     X11 compilant color-name to paint background. [default: #000000]
     -d, --default-delay <default-delay>    Delay in centiseconds between frames, if unspecified in GIF. [default: 10]
-    -s, --scale <SCALE>                    Scaling of frames, relative to available screen [default: NONE]
+    -s, --scale <SCALE>                    Scale GIF-frames, relative to available screen. [default: NONE]  [possible
                                            values: NONE, FILL, MAX]
+    -w, --window-id <WINDOW_ID>            ID of window to animate wallpaper on its background, insted of the root
+                                           window. As decimal, hex or name of root-atom.
 
 ARGS:
     <PATH_TO_GIF>    Path to GIF-file

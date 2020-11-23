@@ -84,8 +84,8 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
         .arg(
             Arg::with_name(ARG_WINDOW_ID)
                 .help(
-                    "ID of window to animate wallpaper on its background, 
-                    insted of the root window. As decimal, hex or name of 
+                    "ID of window to animate wallpaper on its background, \
+                    insted of the root window. As decimal, hex or name of \
                     root-atom.",
                 )
                 .long("window-id")
