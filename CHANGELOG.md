@@ -4,6 +4,18 @@
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.2.0...master)
 
+### Added
+
+- Option `-w` to specify custom window to draw wallpaper on, instead of
+X11-root. Useful for some window managers, which create custom windows as
+background. Must be the same resolution as the screen though! This option
+may also reference an atom of the root window by name, which contains a window
+id.
+
+### Fixed
+
+- Query existing pixmap-properties and kill the owning application. He he he...
+
 ## [v0.2.0](https://github.com/calculon102/xgifwallpaper/tree/v0.2.0) - 2020-10-04
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.1.2...v0.2.0)
