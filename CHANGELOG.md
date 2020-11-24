@@ -2,7 +2,11 @@
 
 ## [Unreleased](https://github.com/calculon102/xgifwallpaper/tree/HEAD)
 
-[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.2.0...master)
+[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...master)
+
+## [v0.3.0](https://github.com/calculon102/xgifwallpaper/tree/v0.3.0) - 2020-11-24
+
+[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.2.0...v0.3.0)
 
 ### Added
 
