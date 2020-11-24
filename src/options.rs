@@ -32,11 +32,26 @@ pub struct Options {
 
 impl Options {
     /// Parse options from command-line.
+    ///
+    /// ```
+    /// let options = Options::from_args();
+    /// ```
     pub fn from_args() -> Options {
         parse_args(init_args().get_matches())
     }
 
-    fn _from_params(params: Vec<&str>) -> Options {
+    /// Parse options as strings, in order given.
+    ///
+    /// ```
+    /// let options = Options::_from_params(
+    ///     vec!["-v", "-b #FF0000", "foobar.gif"]
+    /// );
+    ///
+    /// assert_eq!(options.background_color, "#FF0000".to_string());
+    /// assert_eq!(options.path_to_gif, "foobar.gif".to_string());
+    /// assert_eq!(options.verbose, true);
+    /// ```
+    pub fn _from_params(params: Vec<&str>) -> Options {
         parse_args(init_args().get_matches_from(params))
     }
 }
