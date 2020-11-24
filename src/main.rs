@@ -31,7 +31,7 @@ use xcontext::XContext;
 
 const EXIT_INVALID_FILE: i32 = 103;
 
-const VERSION: &str = "0.3.0-alpha";
+const VERSION: &str = "0.3.0";
 
 /// Screens to render wallpapers on, with needed resolution. And the pre-
 /// rendered frames in a seperate map.
@@ -52,7 +52,7 @@ struct Frame {
     delay: time::Duration,
     raster: Rc<Vec<c_char>>,
     ximage: Box<XImage>,
-    xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long ximage is used
+    xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long as ximage
 }
 
 /// Application entry-point
@@ -70,7 +70,11 @@ fn main() {
         }
     };
 
-    let mut wallpapers = render_wallpapers(&xcontext, options.clone(), running.clone());
+    let mut wallpapers = render_wallpapers(
+        &xcontext, 
+        options.clone(), 
+        running.clone()
+    );
 
     clear_background(&xcontext, options.clone());
 
@@ -257,11 +261,10 @@ fn render_frames(
         // TODO Better naming of vectors
         let step_data = resize_raster(&raster, &target_resolution, options.clone());
 
-        let mut data: Vec<i8> =
-            Vec::with_capacity((target_resolution.width * target_resolution.height * 4) as usize);
-
         // Create shared memory segment and image structure
         let image_byte_size = (target_resolution.width * target_resolution.height * 4) as usize;
+
+        let mut data: Vec<i8> = Vec::with_capacity(image_byte_size);
         let mut xshminfo = create_xshm_sgmnt_inf(image_byte_size).unwrap();
         let ximage = create_xshm_image(
             xcontext.display,
