@@ -4,12 +4,14 @@
 use clap::{value_t, App, Arg, ArgMatches};
 
 use super::position::Scaling;
+use super::position::ScalingFilter;
 use super::VERSION;
 
 const ARG_COLOR: &str = "COLOR";
 const ARG_DELAY: &str = "DELAY";
 const ARG_PATH_TO_GIF: &str = "PATH_TO_GIF";
 const ARG_SCALE: &str = "SCALE";
+const ARG_SCALE_FILTER: &str = "SCALE_FILTER";
 const ARG_VERBOSE: &str = "VERBOSE";
 const ARG_WINDOW_ID: &str = "WINDOW_ID";
 
@@ -24,6 +26,7 @@ pub struct Options {
     pub path_to_gif: String,
     /// Scaling-method to use
     pub scaling: Scaling,
+    pub scaling_filter: ScalingFilter,
     pub verbose: bool,
     /// Window-Id as decimal or hex-number (0x-prefix) or name of atom with Id
     /// to use.
@@ -97,6 +100,14 @@ fn init_args<'a, 'b>() -> App<'a, 'b> {
                 .help("Scale GIF-frames, relative to available screen."),
         )
         .arg(
+            Arg::with_name(ARG_SCALE_FILTER)
+                .long("scale-filter")
+                .takes_value(true)
+                .possible_values(&["AUTO", "PIXEL"])
+                .default_value("AUTO")
+                .help("Filter to use in combination with scale-option. Experimental feature."),
+        )
+        .arg(
             Arg::with_name(ARG_WINDOW_ID)
                 .help(
                     "ID of window to animate wallpaper on its background, \
@@ -127,11 +138,18 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
         &_ => Scaling::NONE, // Cannot happen, due to guarantee of args
     };
 
+    let scaling_filter = match args.value_of(ARG_SCALE_FILTER).unwrap() {
+        "AUTO" => ScalingFilter::AUTO,
+        "PIXEL" => ScalingFilter::PIXEL,
+        &_ => ScalingFilter::AUTO, // Cannot happen, due to guarantee of args
+    };
+
     Options {
         background_color: args.value_of(ARG_COLOR).unwrap().to_owned(),
         default_delay: delay,
         path_to_gif: args.value_of(ARG_PATH_TO_GIF).unwrap().to_owned(),
         scaling,
+        scaling_filter,
         verbose: args.is_present(ARG_VERBOSE),
         window_id: args.value_of(ARG_WINDOW_ID).unwrap_or("").to_string(),
     }

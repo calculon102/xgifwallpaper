@@ -19,6 +19,15 @@ pub enum Scaling {
     MAX,
 }
 
+/// Filter to use for scaling.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ScalingFilter {
+    /// Use best-quality for up- and down-scaling.
+    AUTO,
+    /// Use most simple and perfomant filter.
+    PIXEL,
+}
+
 /// Coordinates to place an image.
 #[derive(Debug, Eq, PartialEq)]
 pub struct ImagePlacement {

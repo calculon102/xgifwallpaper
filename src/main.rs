@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::BufReader;
-use std::os::raw::{c_char, c_uint};
+use std::os::raw::{c_uchar, c_uint};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -50,7 +50,7 @@ struct WallpaperOnScreen {
 /// Combines x-structs, raster- and metadata for a singe frame.
 struct Frame {
     delay: time::Duration,
-    raster: Rc<Vec<c_char>>,
+    raster: Rc<Vec<c_uchar>>,
     ximage: Box<XImage>,
     xshminfo: Box<x11::xshm::XShmSegmentInfo>, // Must exist as long as ximage
 }
@@ -258,12 +258,10 @@ fn render_frames(
 
         // Build target raster
         // TODO Better naming of vectors
-        let step_data = resize_raster(&raster, &target_resolution, options.clone());
 
         // Create shared memory segment and image structure
         let image_byte_size = (target_resolution.width * target_resolution.height * 4) as usize;
 
-        let mut data: Vec<i8> = Vec::with_capacity(image_byte_size);
         let mut xshminfo = create_xshm_sgmnt_inf(image_byte_size).unwrap();
         let ximage = create_xshm_image(
             xcontext.display,
@@ -286,14 +284,14 @@ fn render_frames(
 
         let color = xcontext.background_color;
         let background_rgba = [
-            (color.red / 256) as i8,
-            (color.green / 256) as i8,
-            (color.blue / 256) as i8,
-            -127 as i8,
+            (color.red / 256) as u8,
+            (color.green / 256) as u8,
+            (color.blue / 256) as u8,
+            255 as u8,
         ];
 
         // Get previous frame as raster or plain color pane, if non-existing
-        let prev_raster: Rc<Vec<i8>> = {
+        let prev_raster: Rc<Vec<u8>> = {
             if out.len() > 0 {
                 out.last().unwrap().raster.clone()
             } else {
@@ -301,7 +299,8 @@ fn render_frames(
                     * raster.height() as usize
                     * std::mem::size_of::<Rgba8>();
 
-                let mut solid_color: Vec<i8> = Vec::with_capacity(capacity);
+                // TODO Too big, needs only the size of original frame
+                let mut solid_color: Vec<u8> = Vec::with_capacity(capacity);
                 let mut solid_color_index: usize = 0;
 
                 while solid_color_index < capacity {
@@ -317,17 +316,18 @@ fn render_frames(
             }
         };
 
-        let u8_slice = step_data.as_slice();
+        let u8_slice = raster.as_u8_slice();
         let mut i = 0;
 
+        let mut data: Vec<u8> = Vec::with_capacity(image_byte_size);
         while i < u8_slice.len() {
             let alpha = u8_slice[i + 3];
 
             if alpha == 255 {
-                data.push(u8_slice[i + rgba_indices[0]] as i8);
-                data.push(u8_slice[i + rgba_indices[1]] as i8);
-                data.push(u8_slice[i + rgba_indices[2]] as i8);
-                data.push(u8_slice[i + rgba_indices[3]] as i8);
+                data.push(u8_slice[i + rgba_indices[0]]);
+                data.push(u8_slice[i + rgba_indices[1]]);
+                data.push(u8_slice[i + rgba_indices[2]]);
+                data.push(u8_slice[i + rgba_indices[3]]);
             } else if methods[frame_index] == gift::block::DisposalMethod::Keep {
                 data.push(prev_raster[i + 0]);
                 data.push(prev_raster[i + 1]);
@@ -337,32 +337,37 @@ fn render_frames(
                 data.push(background_rgba[rgba_indices[0]]);
                 data.push(background_rgba[rgba_indices[1]]);
                 data.push(background_rgba[rgba_indices[2]]);
-                data.push(alpha as i8);
+                data.push(alpha);
             }
             i += s;
         }
 
+        let frame_ptr = Rc::new(data);
+        let resized_frame = resize_raster(
+            frame_ptr.clone(),
+            &image_resolution,
+            &target_resolution,
+            options.clone(),
+        );
+
+        logln!(
+            options,
+            "Resized {}={}",
+            resized_frame.len(),
+            image_byte_size
+        );
+
         // Copy raw data into shared memory segment of XImage
-        let data_ptr: Rc<Vec<i8>> = Rc::new(data);
+        let resized_frame_ptr = resized_frame.as_ptr();
         unsafe {
             libc::memcpy(
                 xshminfo.shmaddr as *mut c_void,
-                data_ptr.as_ptr() as *mut _,
+                resized_frame_ptr.clone() as *mut _,
                 image_byte_size,
             );
             (*ximage).data = xshminfo.shmaddr;
             x11::xshm::XShmAttach(xcontext.display, xshminfo.as_mut() as *mut _);
         };
-
-        let data_size = unsafe { ((*ximage).bytes_per_line * (*ximage).height) as usize };
-
-        assert_eq!(
-            data_ptr.len(),
-            data_size,
-            "data-vector must be same length (is {}) as its anticipated capacity and size (is {})",
-            data_ptr.len(),
-            data_size
-        );
 
         let mut delay = step.delay_time_cs().unwrap_or(options.default_delay);
         if delay <= 0 {
@@ -371,7 +376,7 @@ fn render_frames(
 
         out.push(Frame {
             delay: time::Duration::from_millis((delay * 10) as u64),
-            raster: data_ptr,
+            raster: frame_ptr,
             ximage: unsafe { Box::new(*ximage) },
             xshminfo,
         });
@@ -384,46 +389,53 @@ fn render_frames(
 
 /// Resize given RGBA-raster to target-resolution.
 fn resize_raster(
-    raster: &pix::Raster<pix::rgb::SRgba8>,
+    raster: Rc<Vec<u8>>,
+    image_resolution: &Resolution,
     target_resolution: &Resolution,
     options: Arc<Options>,
-) -> Vec<u8> {
-    let src_w = raster.width() as usize;
-    let src_h = raster.height() as usize;
+) -> Rc<Vec<u8>> {
+    let src_w = image_resolution.width as usize;
+    let src_h = image_resolution.height as usize;
     let dst_w = target_resolution.width as usize;
     let dst_h = target_resolution.height as usize;
 
     let must_resize = src_w != dst_w || src_h != dst_h;
 
-    if must_resize {
-        let resize_type = if (src_w * src_h) > (dst_w * dst_h) {
-            resize::Type::Lanczos3
-        } else {
-            resize::Type::Mitchell
-        };
-
-        logln!(
-            options,
-            "Resize raster from {}x{} to {}x{}",
-            src_w,
-            src_h,
-            dst_w,
-            dst_h
-        );
-
-        let sample_size = dst_w * dst_h * 4;
-
-        let mut dst: Vec<u8> = Vec::with_capacity(sample_size);
-        dst.resize(sample_size, 0);
-
-        let mut resizer = resize::new(src_w, src_h, dst_w, dst_h, resize::Pixel::RGBA, resize_type);
-
-        resizer.resize(raster.as_u8_slice().to_vec().as_ref(), &mut dst);
-
-        dst
-    } else {
-        raster.as_u8_slice().to_vec()
+    if !must_resize {
+        return raster.clone();
     }
+
+    let (resize_type, type_name) = match options.scaling_filter {
+        ScalingFilter::PIXEL => (resize::Type::Point, "Point"),
+        ScalingFilter::AUTO => {
+            if (src_w * src_h) > (dst_w * dst_h) {
+                (resize::Type::Lanczos3, "Lanczos3")
+            } else {
+                (resize::Type::Mitchell, "Mitchell")
+            }
+        }
+    };
+
+    logln!(
+        options,
+        "Resize raster from {}x{} to {}x{}, using filter {}",
+        src_w,
+        src_h,
+        dst_w,
+        dst_h,
+        type_name
+    );
+
+    let sample_size = dst_w * dst_h * 4;
+
+    let mut dst: Vec<u8> = Vec::with_capacity(sample_size);
+    dst.resize(sample_size, 0);
+
+    let mut resizer = resize::new(src_w, src_h, dst_w, dst_h, resize::Pixel::RGBA, resize_type);
+
+    resizer.resize(&raster, &mut dst);
+
+    Rc::new(dst)
 }
 
 /// Clear previous backgrounds on root.
