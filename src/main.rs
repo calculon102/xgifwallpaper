@@ -71,9 +71,10 @@ fn main() {
     };
 
     let mut wallpapers = render_wallpapers(
-        &xcontext, 
-        options.clone(), 
-        running.clone()
+        &xcontext,
+        Screens::query_x_screens(),
+        options.clone(),
+        running.clone(),
     );
 
     clear_background(&xcontext, options.clone());
@@ -101,6 +102,7 @@ fn init_sigint_handler<'a>(options: Arc<Options>, running: Arc<AtomicBool>) {
 /// actual screens, options and image-data
 fn render_wallpapers(
     xcontext: &Box<XContext>,
+    xscreens: Screens,
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Wallpapers {
@@ -109,7 +111,6 @@ fn render_wallpapers(
 
     // TODO Try using only low-level frames
     // TODO Prevent double-encoding, by re-using iterator?
-    let mut steps = create_decoder(path_to_gif).into_steps();
     let methods = gather_disposal_methods(path_to_gif);
 
     // Determine image-resolution
@@ -135,8 +136,6 @@ fn render_wallpapers(
     };
 
     // Build wallpapers by screen
-    let xscreens = Screens::query_x_screens();
-
     let mut screens: Vec<WallpaperOnScreen> = Vec::new();
     let mut frames_by_resolution: HashMap<Resolution, Vec<Frame>> = HashMap::new();
 
@@ -165,7 +164,7 @@ fn render_wallpapers(
                 render_frames(
                     xcontext,
                     &wallpaper_on_screen,
-                    steps.by_ref(),
+                    create_decoder(path_to_gif).into_steps().by_ref(),
                     &methods,
                     options.clone(),
                     running.clone(),
@@ -547,5 +546,57 @@ fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Arc<Op
         XClearWindow(xcontext.display, xcontext.root);
 
         XCloseDisplay(xcontext.display);
+    }
+}
+
+#[cfg(all(test, feature = "x11-integration-tests"))]
+mod test {
+    /// Test for github-issue #3:
+    /// [https://github.com/calculon102/xgifwallpaper/issues/3]
+    #[test]
+    fn when_render_for_multiple_resolutions_then_dont_panic() {
+        // Prepare
+        use crate::options::Options;
+        use crate::render_wallpapers;
+        use crate::screens::*;
+        use crate::xcontext::XContext;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+
+        let options = Arc::new(Options::_from_params(vec![
+            "xgifwallpaper",
+            "--scale",
+            "FILL",
+            "tests/samples/sample-1x1.gif",
+        ]));
+
+        let xcontext = Box::new(XContext::new(options.clone()).unwrap());
+        let running = Arc::new(AtomicBool::new(true));
+
+        let screens = Screens {
+            root_per_screen: false,
+            screens: vec![
+                Screen {
+                    screen_number: 0,
+                    x_org: 0,
+                    y_org: 0,
+                    width: 800,
+                    height: 600,
+                },
+                Screen {
+                    screen_number: 1,
+                    x_org: 400,
+                    y_org: 300,
+                    width: 1920,
+                    height: 1080,
+                },
+            ],
+        };
+
+        // Act
+        let wallpapers = render_wallpapers(&xcontext, screens, options.clone(), running.clone());
+
+        assert_eq!(wallpapers.screens.len(), 2);
+        assert_eq!(wallpapers.frames_by_resolution.len(), 2);
     }
 }
