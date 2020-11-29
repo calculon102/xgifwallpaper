@@ -233,7 +233,7 @@ impl std::fmt::Display for XContextError {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "x11-integration-tests"))]
 mod tests {
     use std::ffi::CString;
     use std::sync::Arc;
