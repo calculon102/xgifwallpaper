@@ -4,6 +4,16 @@
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...master)
 
+### Added
+
+- Compile feature `x11-integration-tests` to run tests against a running
+X11-server.
+
+### Fixed
+
+- Crash when use --scale option [\#3](https://github.com/calculon102/xgifwallpaper/issues/3)
+
+
 ## [v0.3.0](https://github.com/calculon102/xgifwallpaper/tree/v0.3.0) - 2020-11-24
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.2.0...v0.3.0)
@@ -19,6 +29,7 @@ id.
 ### Fixed
 
 - Query existing pixmap-properties and kill the owning application. He he he...
+
 
 ## [v0.2.0](https://github.com/calculon102/xgifwallpaper/tree/v0.2.0) - 2020-10-04
 

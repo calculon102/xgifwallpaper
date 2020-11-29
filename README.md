@@ -175,3 +175,13 @@ $ cargo build --release
 
 The result is built as `target/release/xgifwallpaper`.
 
+### Testing
+
+Run `cargo test` for all unit-tests.
+
+Run `cargo test --features x11-integration-tests` to run additional tests in a
+X11-session, against the running server. 
+
+Run `run_samples.sh` from directory `tests/samples` for an e2e-smoke-test of
+some configurations.
+
