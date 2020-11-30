@@ -8,10 +8,14 @@
 
 - Compile feature `x11-integration-tests` to run tests against a running
 X11-server.
+- Experimental option `--scale-filter`. Default value `AUTO` does as as before
+but value `PIXEL` uses most simple algorithm for performance and mabye better
+suited for pixel-art.
 
 ### Fixed
 
 - Crash when use --scale option [\#3](https://github.com/calculon102/xgifwallpaper/issues/3)
+- Upscaling of pixel-art GIFs renders glitches [\#4](https://github.com/calculon102/xgifwallpaper/issues/4)
 
 
 ## [v0.3.0](https://github.com/calculon102/xgifwallpaper/tree/v0.3.0) - 2020-11-24
