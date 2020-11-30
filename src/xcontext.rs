@@ -244,6 +244,7 @@ mod tests {
     use super::EXIT_UNKOWN_COLOR;
 
     use crate::position::Scaling;
+    use crate::position::ScalingFilter;
 
     #[test]
     fn when_option_window_id_is_decimal_then_use_as_root() {
@@ -441,6 +442,7 @@ mod tests {
             default_delay: 100,
             path_to_gif: "foo.gif".to_string(),
             scaling: Scaling::FILL,
+            scaling_filter: ScalingFilter::AUTO,
             verbose: false,
             window_id: window_id.to_string(),
         })
@@ -452,6 +454,7 @@ mod tests {
             default_delay: 100,
             path_to_gif: "foo.gif".to_string(),
             scaling: Scaling::FILL,
+            scaling_filter: ScalingFilter::AUTO,
             verbose: false,
             window_id: "".to_string(),
         })

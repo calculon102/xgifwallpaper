@@ -222,7 +222,7 @@ fn render_frames(
     options: Arc<Options>,
     running: Arc<AtomicBool>,
 ) -> Vec<Frame> {
-    let mut out: Vec<Frame> = Vec::new();
+    let mut rendered_frames: Vec<Frame> = Vec::new();
     let mut frame_index = 0;
 
     let xscreen = unsafe { XDefaultScreenOfDisplay(xcontext.display) };
@@ -292,8 +292,8 @@ fn render_frames(
 
         // Get previous frame as raster or plain color pane, if non-existing
         let prev_raster: Rc<Vec<u8>> = {
-            if out.len() > 0 {
-                out.last().unwrap().raster.clone()
+            if rendered_frames.len() > 0 {
+                rendered_frames.last().unwrap().raster.clone()
             } else {
                 let capacity: usize = raster.width() as usize
                     * raster.height() as usize
@@ -358,24 +358,18 @@ fn render_frames(
         );
 
         // Copy raw data into shared memory segment of XImage
-        let resized_frame_ptr = resized_frame.as_ptr();
         unsafe {
             libc::memcpy(
                 xshminfo.shmaddr as *mut c_void,
-                resized_frame_ptr.clone() as *mut _,
+                resized_frame.as_ptr().clone() as *mut _,
                 image_byte_size,
             );
             (*ximage).data = xshminfo.shmaddr;
             x11::xshm::XShmAttach(xcontext.display, xshminfo.as_mut() as *mut _);
         };
 
-        let mut delay = step.delay_time_cs().unwrap_or(options.default_delay);
-        if delay <= 0 {
-            delay = options.default_delay;
-        }
-
-        out.push(Frame {
-            delay: time::Duration::from_millis((delay * 10) as u64),
+        rendered_frames.push(Frame {
+            delay: get_step_duration(&step, options.clone()),
             raster: frame_ptr,
             ximage: unsafe { Box::new(*ximage) },
             xshminfo,
@@ -384,7 +378,19 @@ fn render_frames(
         frame_index = frame_index + 1;
     }
 
-    return out;
+    return rendered_frames;
+}
+
+/// Get delay from step. Normalize or use default if not below zere or not
+/// given.
+fn get_step_duration(step: &gift::Step, options: Arc<Options>) -> time::Duration {
+    let mut delay = step.delay_time_cs().unwrap_or(options.default_delay);
+
+    if delay <= 0 {
+        delay = options.default_delay;
+    }
+
+    time::Duration::from_millis((delay * 10) as u64)
 }
 
 /// Resize given RGBA-raster to target-resolution.
