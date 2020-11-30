@@ -161,6 +161,7 @@ fn parse_args<'a>(args: ArgMatches<'a>) -> Options {
 mod tests {
     use super::Options;
     use super::Scaling;
+    use super::ScalingFilter;
 
     const PATH_TO_GIF: &str = "wallpaper.gif";
 
@@ -177,6 +178,7 @@ mod tests {
         assert_eq!(options.default_delay, 10);
         assert_eq!(options.verbose, false);
         assert_eq!(options.scaling, Scaling::NONE);
+        assert_eq!(options.scaling_filter, ScalingFilter::AUTO);
     }
 
     #[test]
@@ -229,6 +231,18 @@ mod tests {
     fn when_argument_scale_is_max_then_match_enum() {
         let options = Options::_from_params(_create_params(vec!["-s", "MAX"]));
         assert_eq!(options.scaling, Scaling::MAX);
+    }
+
+    #[test]
+    fn when_argument_scale_filter_is_auto_then_match_enum() {
+        let options = Options::_from_params(_create_params(vec!["--scale-filter", "AUTO"]));
+        assert_eq!(options.scaling_filter, ScalingFilter::AUTO);
+    }
+
+    #[test]
+    fn when_argument_scale_filter_is_pixel_then_match_enum() {
+        let options = Options::_from_params(_create_params(vec!["--scale-filter", "PIXEL"]));
+        assert_eq!(options.scaling_filter, ScalingFilter::PIXEL);
     }
 
     #[test]
