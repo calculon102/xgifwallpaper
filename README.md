@@ -62,6 +62,8 @@ OPTIONS:
     -d, --default-delay <default-delay>    Delay in centiseconds between frames, if unspecified in GIF. [default: 10]
     -s, --scale <SCALE>                    Scale GIF-frames, relative to available screen. [default: NONE]  [possible
                                            values: NONE, FILL, MAX]
+        --scale-filter <SCALE_FILTER>      Filter to use in combination with scale-option. Experimental feature.
+                                           [default: AUTO]  [possible values: AUTO, PIXEL]
     -w, --window-id <WINDOW_ID>            ID of window to animate wallpaper on its background, insted of the root
                                            window. As decimal, hex or name of root-atom.
 
