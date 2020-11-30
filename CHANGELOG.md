@@ -4,6 +4,11 @@
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...master)
 
+
+## [v0.3.1](https://github.com/calculon102/xgifwallpaper/tree/v0.3.1) - 2020-11-30
+
+[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...v0.3.1)
+
 ### Added
 
 - Compile feature `x11-integration-tests` to run tests against a running
