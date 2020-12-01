@@ -21,7 +21,7 @@ x11-integration-tests = []
 [dependencies]
 clap = "2.33"
 ctrlc = "3.1"
-gift = "0.9"
+gift = "0.10"
 libc = "0.2"
 pix = "0.13"
 resize = "0.5"

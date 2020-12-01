@@ -71,12 +71,11 @@ dependencies = [
 
 [[package]]
 name = "gift"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d12ec35196b5d569860e6b6d54e2701cc92f9f1767a9b45655fe8158648c2757"
+checksum = "a9ac9f4c949147ba6721435188949f98f8f7beafef85652835b316094e459559"
 dependencies = [
  "log",
- "lzw",
  "pix",
 ]
 
@@ -103,12 +102,6 @@ checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
  "cfg-if",
 ]
-
-[[package]]
-name = "lzw"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d947cbb889ed21c2a84be6ffbaebf5b4e0f4340638cba0444907e38b56be084"
 
 [[package]]
 name = "nix"

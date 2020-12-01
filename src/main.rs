@@ -13,7 +13,6 @@ use pix::rgb::Rgba8;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::File;
-use std::io::BufReader;
 use std::os::raw::{c_uchar, c_uint};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -188,7 +187,7 @@ fn render_wallpapers(
 }
 
 /// Create GIF-decoder from file.
-fn create_decoder(path_to_gif: &str) -> gift::Decoder<BufReader<File>> {
+fn create_decoder(path_to_gif: &str) -> gift::Decoder<File> {
     gift::Decoder::new(File::open(path_to_gif).expect("Unable to read file"))
 }
 
@@ -217,7 +216,7 @@ fn gather_disposal_methods(path_to_gif: &str) -> Vec<gift::block::DisposalMethod
 fn render_frames(
     xcontext: &Box<XContext>,
     wallpaper_on_screen: &WallpaperOnScreen,
-    steps: &mut gift::decode::Steps<BufReader<File>>,
+    steps: &mut gift::decode::Steps<File>,
     methods: &Vec<gift::block::DisposalMethod>,
     options: Arc<Options>,
     running: Arc<AtomicBool>,
