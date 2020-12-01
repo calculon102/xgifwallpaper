@@ -234,7 +234,7 @@ fn render_frames(
             break;
         }
 
-        let step = step_option.expect("Empty step in animation");
+        let step = step_option.expect("Unexpected end of steps");
         let raster = step.raster();
 
         let image_resolution = Resolution {
@@ -280,8 +280,6 @@ fn render_frames(
             [2, 1, 0, 3] // BGRA
         };
 
-        let s = 4;
-
         let color = xcontext.background_color;
         let background_rgba = [
             (color.red / 256) as u8,
@@ -309,7 +307,7 @@ fn render_frames(
                     solid_color.push(background_rgba[rgba_indices[2]]);
                     solid_color.push(background_rgba[rgba_indices[3]]);
 
-                    solid_color_index += s;
+                    solid_color_index += 4;
                 }
 
                 Rc::new(solid_color)
@@ -339,7 +337,8 @@ fn render_frames(
                 data.push(background_rgba[rgba_indices[2]]);
                 data.push(alpha);
             }
-            i += s;
+
+            i += 4;
         }
 
         let frame_ptr = Rc::new(data);
@@ -378,7 +377,7 @@ fn render_frames(
         frame_index = frame_index + 1;
     }
 
-    return rendered_frames;
+    rendered_frames
 }
 
 /// Get delay from step. Normalize or use default if not below zere or not
