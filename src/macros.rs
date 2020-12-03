@@ -2,24 +2,32 @@
 
 /// Prints message, if verbose is `true` in given `Options`, without implicit
 /// line-break.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
-/// let options = Options::_from_params(vec!["-v", "foobar.gif"]);
+/// # #[macro_use] extern crate xgifwallpaper;
+/// # fn main() {
+/// # use xgifwallpaper::options::Options;
+/// let options = Options::_from_params(vec!["xgifwallpaper", "-v", "foobar.gif"]);
 /// assert_eq!(options.verbose, true);
-/// 
+///
 /// log!(options, "This should be logged ... ");
 /// log!(options, "on the same line.");
+/// # }
 /// ```
-/// 
-// ```
-// let options = Options::_from_params(vec!["foobar.gif"]);
-// assert_eq!(options.verbose, false);
-// 
-// log!(options, "This will not be logged ... ");
-// log!(options, "never.");
-// ```
+///
+/// ```
+/// # #[macro_use] extern crate xgifwallpaper;
+/// # fn main() {
+/// # use xgifwallpaper::options::Options;
+/// let options = Options::_from_params(vec!["xgifwallpaper", "foobar.gif"]);
+/// assert_eq!(options.verbose, false);
+///
+/// log!(options, "This will not be logged ... ");
+/// log!(options, "in no way.");
+/// # }
+/// ```
 #[macro_export]
 macro_rules! log {
     ($is_verbose:ident, $message:expr) => {
@@ -35,26 +43,35 @@ macro_rules! log {
     };
 }
 
-/// Prints message, if verbose is `true` in given `Options`, with implicit
+/// Prints message, if verbose is `true` in given `Options`, without implicit
 /// line-break.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
-/// let options = Options::_from_params(vec!["-v", "foobar.gif"]);
+/// # #[macro_use] extern crate xgifwallpaper;
+/// # fn main() {
+/// # use xgifwallpaper::options::Options;
+/// let options = Options::_from_params(vec!["xgifwallpaper", "-v", "foobar.gif"]);
 /// assert_eq!(options.verbose, true);
-/// 
+///
 /// logln!(options, "This should be logged ... ");
 /// logln!(options, "on two lines.");
+/// # }
 /// ```
-/// 
-// ```
-// let options = Options::_from_params(vec!["foobar.gif"]);
-// assert_eq!(options.verbose, false);
-// 
-// logln!(options, "This will not be logged ... ");
-// logln!(options, "never.");
-// ```
+///
+/// ```
+/// # #[macro_use] extern crate xgifwallpaper;
+/// # fn main() {
+/// # use xgifwallpaper::options::Options;
+/// let options = Options::_from_params(vec!["xgifwallpaper", "foobar.gif"]);
+/// assert_eq!(options.verbose, false);
+///
+/// logln!(options, "This will not be logged ... ");
+/// logln!(options, "and never on two lines.");
+/// # }
+/// ```
+#[macro_export]
 macro_rules! logln {
     ($is_verbose:ident, $message:expr) => {
         if $is_verbose.verbose {

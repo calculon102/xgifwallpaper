@@ -13,10 +13,14 @@ readme = "README.md"
 repository = "https://github.com/calculon102/xgifwallpaper"
 version = "0.3.1"
 
-[features]
-# Compiles test-cases, that require a real x11-server running in the same
-# session.
-x11-integration-tests = []
+[lib]
+name = "xgifwallpaper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xgifwallpaper"
+path = "src/main.rs"
+doc = false
 
 [dependencies]
 clap = "2.33"
@@ -26,3 +30,9 @@ libc = "0.2"
 pix = "0.13"
 resize = "0.5"
 x11 = { git = "https://github.com/baist0/x11-rs.git" }
+
+[features]
+# Compiles test-cases, that require a real x11-server running in the same
+# session.
+x11-integration-tests = []
+
