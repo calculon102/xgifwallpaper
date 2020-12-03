@@ -505,21 +505,6 @@ pub fn clean_up(xcontext: Box<XContext>, mut wallpapers: Wallpapers, options: Ar
             destroy_xshm_sgmnt_inf(&mut frames[i].xshminfo);
         }
     }
-
-    unsafe {
-        logln!(options, "Free pixmap used for background");
-        XFreePixmap(xcontext.display, xcontext.pixmap);
-
-        logln!(options, "Reset background to solid black and clear window");
-        XSetWindowBackground(
-            xcontext.display,
-            xcontext.root,
-            x11::xlib::XBlackPixel(xcontext.display, xcontext.screen),
-        );
-        XClearWindow(xcontext.display, xcontext.root);
-
-        XCloseDisplay(xcontext.display);
-    }
 }
 
 #[cfg(all(test, feature = "x11-integration-tests"))]

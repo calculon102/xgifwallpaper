@@ -19,6 +19,7 @@ const DEFAULT_DELAY: u16 = 10;
 const DEFAULT_DELAY_STR: &str = "10";
 
 /// Runtime options as given by the caller of this program.
+#[derive(Debug)]
 pub struct Options {
     /// X11-compilant color-name
     pub background_color: String,

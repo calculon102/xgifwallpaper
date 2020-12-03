@@ -8,10 +8,10 @@ use std::result::*;
 use std::sync::Arc;
 
 use x11::xlib::{
-    Display, FillSolid, Pixmap, XAllocColor, XCloseDisplay, XColor, XConnectionNumber,
+    Display, FillSolid, Pixmap, XAllocColor, XCloseDisplay, XColor, XConnectionNumber, XClearWindow,
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultGC, XDefaultScreen, XDisplayHeight,
-    XDisplayWidth, XDrawRectangle, XFillRectangle, XOpenDisplay, XParseColor, XRootWindow,
-    XSetBackground, XSetFillStyle, XSetForeground, GC,
+    XDisplayWidth, XDrawRectangle, XFillRectangle, XFreePixmap, XOpenDisplay, XParseColor, XRootWindow,
+    XSetBackground, XSetWindowBackground, XSetFillStyle, XSetForeground, GC,
 };
 
 use crate::options::Options;
@@ -32,6 +32,7 @@ pub struct XContext {
     pub pixmap: Pixmap,
     pub root: c_ulong,
     pub screen: c_int,
+    options: Arc<Options>,
 }
 
 impl XContext {
@@ -98,7 +99,29 @@ impl XContext {
             pixmap,
             root: window,
             screen,
+            options: opts.clone(),
         })
+    }
+}
+
+impl Drop for XContext {
+    fn drop(&mut self) {
+        let options = self.options.clone();
+
+        unsafe {
+            logln!(options, "Free pixmap used for background");
+            XFreePixmap(self.display, self.pixmap);
+
+            logln!(options, "Reset background to solid black and clear window");
+            XSetWindowBackground(
+                self.display,
+                self.root,
+                x11::xlib::XBlackPixel(self.display, self.screen),
+            );
+            XClearWindow(self.display, self.root);
+
+            XCloseDisplay(self.display);
+        }
     }
 }
 
