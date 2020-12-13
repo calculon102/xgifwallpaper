@@ -30,7 +30,7 @@ use xcontext::XContext;
 
 const EXIT_INVALID_FILE: i32 = 103;
 
-const VERSION: &str = "0.3.1";
+const VERSION: &str = "0.4.0-alpha";
 
 /// Screens to render wallpapers on, with needed resolution. And the pre-
 /// rendered frames in a seperate map.
