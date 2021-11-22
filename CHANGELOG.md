@@ -4,6 +4,10 @@
 
 [Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...master)
 
+### Fixed
+
+- warning: getting the inner pointer of a temporary CString [\#5](https://github.com/calculon102/xgifwallpaper/issues/5)
+
 
 ## [v0.3.1](https://github.com/calculon102/xgifwallpaper/tree/v0.3.1) - 2020-11-30
 

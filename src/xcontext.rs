@@ -8,10 +8,11 @@ use std::result::*;
 use std::sync::Arc;
 
 use x11::xlib::{
-    Display, FillSolid, Pixmap, XAllocColor, XCloseDisplay, XColor, XConnectionNumber, XClearWindow,
-    XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultGC, XDefaultScreen, XDisplayHeight,
-    XDisplayWidth, XDrawRectangle, XFillRectangle, XFreePixmap, XOpenDisplay, XParseColor, XRootWindow,
-    XSetBackground, XSetWindowBackground, XSetFillStyle, XSetForeground, GC,
+    Display, FillSolid, Pixmap, XAllocColor, XClearWindow, XCloseDisplay, XColor,
+    XConnectionNumber, XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultGC, XDefaultScreen,
+    XDisplayHeight, XDisplayWidth, XDrawRectangle, XFillRectangle, XFreePixmap, XOpenDisplay,
+    XParseColor, XRootWindow, XSetBackground, XSetFillStyle, XSetForeground, XSetWindowBackground,
+    GC,
 };
 
 use crate::options::Options;
@@ -178,18 +179,12 @@ fn parse_color(
 
     let xcolor_ptr: *mut XColor = &mut xcolor;
     let color_str = opts.background_color.as_str();
+    let color_cstr = CString::new(color_str).unwrap();
     let cmap = unsafe { XDefaultColormap(display, screen) };
 
     log!(opts, "Parse \"{}\" as X11-color: ", color_str);
 
-    let result = unsafe {
-        XParseColor(
-            display,
-            cmap,
-            CString::new(color_str).unwrap().as_ptr(),
-            xcolor_ptr,
-        )
-    };
+    let result = unsafe { XParseColor(display, cmap, color_cstr.as_ptr(), xcolor_ptr) };
 
     if result == 0 {
         unsafe { XCloseDisplay(display) };
