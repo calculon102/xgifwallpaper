@@ -24,12 +24,12 @@ doc = false
 
 [dependencies]
 clap = "2.33"
-ctrlc = "3.1"
+ctrlc = "3.2"
 gift = "0.10"
 libc = "0.2"
 pix = "0.13"
 resize = "0.5"
-x11 = { git = "https://github.com/baist0/x11-rs.git" }
+x11 = { git="https://github.com/calculon102/x11-rs/", branch="xshm" }
 
 [features]
 # Compiles test-cases, that require a real x11-server running in the same
