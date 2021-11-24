@@ -409,12 +409,9 @@ mod tests {
     fn create_atom(name: &str, data_ptr: *const u8, ptype: u64) {
         unsafe {
             let display = x11::xlib::XOpenDisplay(std::ptr::null());
+            let name_cstr = CString::new(name).unwrap();
 
-            let atom = x11::xlib::XInternAtom(
-                display,
-                CString::new(name).unwrap().as_ptr(),
-                x11::xlib::False,
-            );
+            let atom = x11::xlib::XInternAtom(display, name_cstr.as_ptr(), x11::xlib::False);
 
             let screen = x11::xlib::XDefaultScreen(display);
             let root = x11::xlib::XRootWindow(display, screen);
@@ -438,12 +435,9 @@ mod tests {
     fn delete_atom(name: &str) {
         unsafe {
             let display = x11::xlib::XOpenDisplay(std::ptr::null());
+            let name_cstr = CString::new(name).unwrap();
 
-            let atom = x11::xlib::XInternAtom(
-                display,
-                std::ffi::CString::new(name).unwrap().as_ptr(),
-                x11::xlib::False,
-            );
+            let atom = x11::xlib::XInternAtom(display, name_cstr.as_ptr(), x11::xlib::False);
 
             let screen = x11::xlib::XDefaultScreen(display);
             let root = x11::xlib::XRootWindow(display, screen);
