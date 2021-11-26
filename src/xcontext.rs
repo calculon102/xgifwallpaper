@@ -57,6 +57,13 @@ impl XContext {
             ));
         }
 
+        return XContext::new_with_display(opts, display);
+    }
+
+    fn new_with_display(
+        opts: Arc<Options>,
+        display: *mut Display,
+    ) -> Result<XContext, XContextError> {
         if !is_xshm_available(display) {
             return Err(XContextError::with(
                 EXIT_XSHM_UNSUPPORTED,
@@ -254,7 +261,10 @@ impl std::fmt::Display for XContextError {
 #[cfg(all(test, feature = "x11-integration-tests"))]
 mod tests {
     use std::ffi::CString;
+    use std::os::raw::{c_uint, c_ulong};
     use std::sync::Arc;
+
+    use x11::xlib::*;
 
     use super::Options;
     use super::XContext;
@@ -266,20 +276,27 @@ mod tests {
 
     #[test]
     fn when_option_window_id_is_decimal_then_use_as_root() {
-        guard_x11_test();
+        let display = open_display(); // Display is automatically Closed by XCoontext-desctructor
 
-        let xcontext = XContext::new(create_options("4711")).unwrap();
+        let window_id = create_window(display);
 
-        assert_eq!(xcontext.root, 4711);
+        let xcontext =
+            XContext::new_with_display(create_options(window_id.to_string().as_str()), display)
+                .unwrap();
+
+        assert_eq!(xcontext.root, window_id);
     }
 
     #[test]
     fn when_option_window_id_is_hexdecimal_then_use_as_root() {
-        guard_x11_test();
+        let display = open_display(); // Display is automatically Closed by XCoontext-desctructor
 
-        let xcontext = XContext::new(create_options("0x00000FF")).unwrap();
+        let window_id = create_window(display);
+        let hex_value = format!("0x{:X}", window_id);
 
-        assert_eq!(xcontext.root, 255);
+        let xcontext = XContext::new_with_display(create_options(&hex_value), display).unwrap();
+
+        assert_eq!(xcontext.root, window_id);
     }
 
     #[test]
@@ -304,16 +321,17 @@ mod tests {
 
     #[test]
     fn when_option_window_id_is_an_atom_name_then_parse_its_value() {
-        guard_x11_test();
+        let display = open_display(); // Display is automatically Closed by XCoontext-desctructor
 
-        create_atom_window_id("test_atom", 4711);
+        let window_id = create_window(display);
+        create_atom_window_id("test_atom", window_id as u32, Some(display));
 
         let xcontext = XContext::new(create_options("test_atom"));
 
-        delete_atom("test_atom");
+        delete_atom("test_atom", Some(display));
 
         match xcontext {
-            Ok(xcontext) => assert_eq!(4711, xcontext.root),
+            Ok(xcontext) => assert_eq!(xcontext.root, window_id),
             Err(_) => assert!(false),
         };
     }
@@ -322,11 +340,11 @@ mod tests {
     fn when_option_window_id_is_an_atom_name_then_parse_its_value_and_fail_if_not_an_id() {
         guard_x11_test();
 
-        create_atom_string("foo", "bar");
+        create_atom_string("foo", "bar", None);
 
         let xcontext = XContext::new(create_options("foo"));
 
-        delete_atom("foo");
+        delete_atom("foo", None);
 
         match xcontext {
             Ok(_) => assert!(false),
@@ -380,35 +398,70 @@ mod tests {
         };
     }
 
-    fn guard_x11_test() {
+    fn open_display() -> *mut Display {
         let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
 
         if display.is_null() {
             assert!(false, "This test must run in a X11-session.");
         }
 
+        display
+    }
+
+    fn guard_x11_test() {
+        let display = open_display();
+
         unsafe { x11::xlib::XCloseDisplay(display) };
     }
 
-    fn create_atom_window_id(name: &str, window_id: u32) {
+    fn create_window(display: *mut Display) -> c_ulong {
+        unsafe {
+            let screen = XDefaultScreen(display);
+            let root = XRootWindow(display, screen);
+            let dsp_width = XDisplayWidth(display, screen) as c_uint;
+            let dsp_height = XDisplayHeight(display, screen) as c_uint;
+            let black_pixel = XBlackPixel(display, screen);
+
+            return XCreateSimpleWindow(
+                display,
+                root,
+                0,
+                0,
+                dsp_width,
+                dsp_height,
+                0,
+                black_pixel,
+                black_pixel,
+            );
+        }
+    }
+
+    fn create_atom_window_id(name: &str, window_id: u32, existing_display: Option<*mut Display>) {
         create_atom(
             name,
             Box::into_raw(Box::new(window_id)) as *const u8,
             x11::xlib::XA_WINDOW,
+            existing_display,
         );
     }
 
-    fn create_atom_string(name: &str, value: &str) {
+    fn create_atom_string(name: &str, value: &str, existing_display: Option<*mut Display>) {
         create_atom(
             name,
             CString::new(value).unwrap().into_raw() as *const u8,
             x11::xlib::XA_STRING,
+            existing_display,
         );
     }
 
-    fn create_atom(name: &str, data_ptr: *const u8, ptype: u64) {
+    fn create_atom(
+        name: &str,
+        data_ptr: *const u8,
+        ptype: u64,
+        existing_display: Option<*mut Display>,
+    ) {
         unsafe {
-            let display = x11::xlib::XOpenDisplay(std::ptr::null());
+            let display = existing_display.unwrap_or(XOpenDisplay(std::ptr::null()));
             let name_cstr = CString::new(name).unwrap();
 
             let atom = x11::xlib::XInternAtom(display, name_cstr.as_ptr(), x11::xlib::False);
@@ -428,13 +481,15 @@ mod tests {
             );
 
             x11::xlib::XFlush(display);
-            x11::xlib::XCloseDisplay(display);
+            if existing_display.is_none() {
+                x11::xlib::XCloseDisplay(display);
+            }
         }
     }
 
-    fn delete_atom(name: &str) {
+    fn delete_atom(name: &str, existing_display: Option<*mut Display>) {
         unsafe {
-            let display = x11::xlib::XOpenDisplay(std::ptr::null());
+            let display = existing_display.unwrap_or(XOpenDisplay(std::ptr::null()));
             let name_cstr = CString::new(name).unwrap();
 
             let atom = x11::xlib::XInternAtom(display, name_cstr.as_ptr(), x11::xlib::False);
@@ -444,7 +499,9 @@ mod tests {
 
             x11::xlib::XDeleteProperty(display, root, atom);
 
-            x11::xlib::XCloseDisplay(display);
+            if existing_display.is_none() {
+                x11::xlib::XCloseDisplay(display);
+            }
         }
     }
 
