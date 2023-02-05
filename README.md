@@ -33,6 +33,7 @@ atom `_NET_CLIENT_LIST_STACKING(WINDOW)` of root window. See examples.
 * [qtile](http://www.qtile.org/)
 * [Xfce](https://www.xfce.org) - Use -w with `XFCE_DESKTOP_WINDOW`
 * [xmonad](https://xmonad.org)
+* [Awesome WM](https://awesomewm.org/)
 
 Known not work with 
 
