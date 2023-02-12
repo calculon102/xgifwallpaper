@@ -40,7 +40,7 @@ impl XContext {
     /// Start the X11-lifecycle:
     ///
     /// * Creates a connection to the default display of X
-    /// * Checks if XSHM is available, exits the process otherweise
+    /// * Checks if XSHM is available, exits the process otherwise
     /// * Queries defaults for screen, gc and root window
     /// * Parses given color in option as X11-color
     /// * Prepares the pixmap for frame-drawing
