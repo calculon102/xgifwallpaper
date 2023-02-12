@@ -2,7 +2,7 @@
 
 use std::error::Error;
 use std::ffi::CString;
-use std::os::raw::{c_int, c_uint, c_ulong};
+use std::os::raw::{c_char, c_int, c_uint, c_ulong};
 use std::ptr;
 use std::result::*;
 use std::sync::Arc;
@@ -153,7 +153,7 @@ fn parse_window_id(
     }
 
     // Else ask root window for property, then check if hexadecimal or decimal
-    let atom = get_atom(display, window_id.as_ptr() as *const i8, x11::xlib::True);
+    let atom = get_atom(display, window_id.as_ptr() as *const c_char, x11::xlib::True);
     if atom == x11::xlib::False as u64 {
         return Err(XContextError::with(
             EXIT_INVALID_WINDOW_ID,
