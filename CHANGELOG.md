@@ -2,11 +2,19 @@
 
 ## [Unreleased](https://github.com/calculon102/xgifwallpaper/tree/HEAD)
 
-[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.0...master)
+[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.2...master)
+
+Nothing until now.
+
+
+## [v0.3.2](https://github.com/calculon102/xgifwallpaper/tree/v0.3.2) - 2023-02-12
+
+[Full Changelog](https://github.com/calculon102/xgifwallpaper/compare/v0.3.1...v0.3.2)
 
 ### Fixed
 
 - warning: getting the inner pointer of a temporary CString [\#5](https://github.com/calculon102/xgifwallpaper/issues/5)
+- fix usage of platform dependend `u8`, instead of `c_char` as parameter [\#10](https://github.com/calculon102/xgifwallpaper/issues/10)
 
 
 ## [v0.3.1](https://github.com/calculon102/xgifwallpaper/tree/v0.3.1) - 2020-11-30
